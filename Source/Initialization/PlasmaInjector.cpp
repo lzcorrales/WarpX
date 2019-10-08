@@ -1,12 +1,13 @@
 #include "PlasmaInjector.H"
 
-#include <sstream>
-#include <functional>
-
 #include <WarpXConst.H>
 #include <WarpX_f.H>
-#include <AMReX.H>
 #include <WarpX.H>
+
+#include <AMReX.H>
+
+#include <sstream>
+#include <functional>
 
 using namespace amrex;
 
@@ -45,7 +46,7 @@ namespace {
         } else if (name == "m_p"){
             return PhysConst::m_p;
         } else if (name == "inf"){
-	    return std::numeric_limits<double>::infinity();
+            return std::numeric_limits<double>::infinity();
         } else if (pp.query("mass", result)) {
             return result;
         } else {
@@ -143,9 +144,11 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name)
         parseDensity(pp);
         parseMomentum(pp);
     } else if (part_pos_s == "nuniformpercell") {
-        num_particles_per_cell_each_dim.resize(3);
+        // Note that for RZ, three numbers are expected, r, theta, and z.
+        // For 2D, only two are expected. The third is overwritten with 1.
+        num_particles_per_cell_each_dim.assign(3, 1);
         pp.getarr("num_particles_per_cell_each_dim", num_particles_per_cell_each_dim);
-#if ( AMREX_SPACEDIM == 2 )
+#if WARPX_DIM_XZ
         num_particles_per_cell_each_dim[2] = 1;
 #endif
         // Construct InjectorPosition from InjectorPositionRegular.
