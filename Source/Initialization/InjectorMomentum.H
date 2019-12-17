@@ -116,7 +116,7 @@ struct InjectorMomentumJuttner
     // boost velocity/c beta,
     // and boost direction dir respectively.
     InjectorMomentumJuttner(amrex::Real t, amrex::Real b, int d) noexcept
-        : dir(d), beta(b)
+        : dir(d)
         {}
 
     AMREX_GPU_HOST_DEVICE
@@ -125,9 +125,10 @@ struct InjectorMomentumJuttner
     {
         // Sobol method for sampling MJ Speeds,
         // from Zenitani 2015 (Phys. Plasmas 22, 042116).
-        amrex::Real x1, x2, gamma, theta;
+        amrex::Real x1, x2, gamma, theta, beta;
         amrex::Real u [3];
-	theta = 0.15 + (1.572 - 0.15) * (std::cosh( (x + 3.6742) / 0.0408248291 ) + std::cosh( (x - 3.6742) / 0.0408248291 ));
+	theta = 0.15 + (1.572 - 0.15) * (std::pow(std::cosh( (x + 3.6742) / 0.0408248291 ),-2) + std::pow(std::cosh( (x - 3.6742) / 0.0408248291 ),-2));
+	beta = 0.3 * (std::pow(std::cosh( (x + 3.6742) / 0.0408248291 ),-2) + std::pow(std::cosh( (x - 3.6742) / 0.0408248291 ),-2));
         x1 = 0.;
         gamma = 0.;
         u[dir] = 0.;
@@ -178,7 +179,6 @@ struct InjectorMomentumJuttner
 
 private:
     int dir;
-    amrex::Real beta;
 };
 
 
