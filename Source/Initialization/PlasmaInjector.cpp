@@ -311,6 +311,7 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
         }
         pp.query("theta", theta);
         pp.query("bulk_vel_dir", direction);
+	beta = 1;
         if(direction[0] == '-'){
             beta = -beta;
         }
