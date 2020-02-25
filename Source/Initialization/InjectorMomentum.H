@@ -127,9 +127,9 @@ struct InjectorMomentumJuttner
         // from Zenitani 2015 (Phys. Plasmas 22, 042116).
         amrex::Real x1, x2, gamma, theta, beta;
         amrex::Real u [3];
+	int iterations = 0;
 	//amrex::Real delta;
 	//delta = 0.0408248291;
-	// theta = 0.15 + (1.572 - 0.15) * (std::pow(std::cosh( (x + 3.6742) / 0.0408248291 ),-2) + std::pow(std::cosh( (x - 3.6742) / 0.0408248291 ),-2));
 	// if(( 3.6742-delta/2 < x && x < 3.6742+delta/2) || ( -3.6742-delta/2 < x && x < -3.6742+delta/2) )
 	// {
 	//     theta = 1.572;
@@ -138,15 +138,35 @@ struct InjectorMomentumJuttner
 	// {
 	//     theta = 0.15;
 	// }
-	theta = 1.572 - (1.572-0.15)*std::pow(1+std::tanh((x - 3.6742) / 0.0408248291)-std::tanh((x + 3.6742) / 0.0408248291),2);
-	beta = Bdir * 0.3 * (std::pow(std::cosh( (x + 3.6742) / 0.0408248291 ),-2) - std::pow(std::cosh( (x - 3.6742) / 0.0408248291 ),-2));
+	//theta = 1.572 - (1.572-0.15)*std::pow(1+std::tanh((x - 3.6742) / 0.0408248291)-std::tanh((x + 3.6742) / 0.0408248291),2);
+	//theta = 30 / 4 * ( ( 101./100. - std::pow( std::tanh( ( x - 3.6742 ) / 0.0408248291 ), 2) ) / ( 1. + 4 * std::pow( std::cosh( ( x - 3.6742 ) / 0.040824291) , -2) ) +
+	//		   ( 101./100. - std::pow( std::tanh( ( x + 3.6742 ) / 0.0408248291 ), 2) ) / ( 1. + 4 * std::pow( std::cosh( ( x + 3.6742 ) / 0.040824291) , -2) ) );
+	beta = Bdir * 0.3 * (std::pow(std::cosh( (x + 3.6742) / 0.0408248291 ),-1) - std::pow(std::cosh( (x - 3.6742) / 0.0408248291 ),-1));
+	//beta = 0;
+	//beta = 0;
+	//x1 = (std::floor((x / 14.69693846 + 0.5) * 6144) + .5) * 14.69693846/6144 - 7.348469232;
+	// theta = 30./4. * ( 51./50. - std::pow( -1. - std::tanh((x1 - 3.6742) / 0.0408248291) + std::tanh((x1 + 3.6742) / 0.0408248291) , 2 ) )/
+	//     (1. + 4.*( std::pow( std::cosh((x1 + 3.6742) / 0.0408248291), -2 )  + std::pow( std::cosh((x1 - 3.6742) / 0.0408248291), -2 ) ) );
+	theta = 30./4. * ( 51./50. - std::pow( -1. - std::tanh((x - 3.6742) / 0.0408248291) + std::tanh((x + 3.6742) / 0.0408248291) , 2 ) ) /
+	    ( ( 1. + 4.*( std::pow( std::cosh((x + 3.6742) / 0.0408248291), -1 )  + std::pow( std::cosh((x - 3.6742) / 0.0408248291), -1 ) ) )*
+	      std::pow( 1. - std::pow(0.3 * (std::pow(std::cosh( (x + 3.6742) / 0.0408248291 ), -1 ) - std::pow(std::cosh( (x - 3.6742) / 0.0408248291 ), -1 ) ), 2 ), 0.5 ) );
+	// theta = 30./4. * ( 51./50. - std::pow( -1. - std::tanh((x - 3.6742) / 0.0408248291) + std::tanh((x + 3.6742) / 0.0408248291) , 2 ) ) /
+	//     ( ( 1. + 4.*( std::pow( std::cosh((x + 3.6742) / 0.0408248291), -1 )  + std::pow( std::cosh((x - 3.6742) / 0.0408248291), -1 ) ) ) );
+	//theta = 1.52;
+	// amrex::Print() << "x:" << x << std::endl;
+	// amrex::Print() << "Numerator:" << ( 51./50. - std::pow( -1. - std::tanh((x - 3.6742) / 0.0408248291) + std::tanh((x + 3.6742) / 0.0408248291) , 2 ) ) << std::endl;
+	// amrex::Print() << "Denomenator:" << (1. + 4.*( std::pow( std::cosh((x + 3.6742) / 0.0408248291), -2 ) ) + std::pow( std::cosh((x - 3.6742) / 0.0408248291), -2 ) ) << std::endl;
+        // amrex::Print() << "Theata:" << theta << std::endl;
         x1 = 0.;
         gamma = 0.;
+	//beta = (std::floor((x / 14.69693846 + 0.5) * 6144) - .5) * 14.69693846/6144 - 7.348469232;
+	//beta = 0;
         u[dir] = 0.;
         // This condition is equation 10 in Zenitani,
         // though x1 is defined differently.
         while(u[dir]-gamma <= x1)
         {
+	    iterations += 1;
             u[dir] = -theta*
                 std::log(amrex::Random()*amrex::Random()*amrex::Random());
             gamma = std::sqrt(1+std::pow(u[dir],2));
@@ -178,6 +198,7 @@ struct InjectorMomentumJuttner
         if(-beta*u[dir]/gamma>x1)
         {
             u[dir] = -u[dir];
+
         }
         // This Lorentz transform is equation 17 in Zenitani.
         // It transforms the integral d3u' -> d3u
