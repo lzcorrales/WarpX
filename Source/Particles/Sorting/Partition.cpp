@@ -1,7 +1,15 @@
-#include <SortingUtils.H>
-#include <PhysicalParticleContainer.H>
-#include <WarpX.H>
+/* Copyright 2019 Remi Lehe
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
+#include "SortingUtils.H"
+#include "Particles/PhysicalParticleContainer.H"
+#include "WarpX.H"
+
 #include <AMReX_Particles.H>
+
 
 using namespace amrex;
 
@@ -40,7 +48,7 @@ PhysicalParticleContainer::PartitionParticlesInBuffers(
     iMultiFab const* gather_masks,
     RealVector& uxp, RealVector& uyp, RealVector& uzp, RealVector& wp)
 {
-    BL_PROFILE("PPC::Evolve::partition");
+    WARPX_PROFILE("PPC::Evolve::partition");
 
     // Initialize temporary arrays
     Gpu::DeviceVector<int> inexflag;
@@ -56,7 +64,7 @@ PhysicalParticleContainer::PartitionParticlesInBuffers(
         gather_masks : current_masks;
     // - For each particle, find whether it is in the larger buffer,
     //   by looking up the mask. Store the answer in `inexflag`.
-    amrex::ParallelFor( np, fillBufferFlag(pti, bmasks, inexflag, Geom(lev), 0) );
+    amrex::ParallelFor( np, fillBufferFlag(pti, bmasks, inexflag, Geom(lev)) );
     // - Find the indices that reorder particles so that the last particles
     //   are in the larger buffer
     fillWithConsecutiveIntegers( pid );
@@ -93,7 +101,7 @@ PhysicalParticleContainer::PartitionParticlesInBuffers(
             // - For each particle in the large buffer, find whether it is in
             // the smaller buffer, by looking up the mask. Store the answer in `inexflag`.
             amrex::ParallelFor( np - n_fine,
-               fillBufferFlag(pti, bmasks, inexflag, Geom(lev), n_fine) );
+               fillBufferFlagRemainingParticles(pti, bmasks, inexflag, Geom(lev), pid, n_fine) );
             auto const sep2 = stablePartition( sep, pid.end(), inexflag );
 
             if (bmasks == gather_masks) {

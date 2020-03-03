@@ -1,4 +1,4 @@
-/* Copyright 2019 Axel Huebl, Weiqun Zhang
+/* Copyright 2019-2020 Axel Huebl
  *
  * This file is part of WarpX.
  *
@@ -56,14 +56,16 @@ public:
         int const k
     ) const noexcept
     {
+        using namespace amrex;
+
         auto const & fine_unsafe = m_fine;   // out-of-bounds access not secured with zero-values yet
         auto const & coarse      = m_coarse; // out-of-bounds access not secured but will also not occur
 
         // return zero for out-of-bounds accesses during interpolation
         // this is efficiently used as a method to add neutral elements beyond guards in the average below
-        auto const fine = [fine_unsafe] AMREX_GPU_DEVICE (int const j, int const k, int const l) noexcept
+        auto const fine = [fine_unsafe] AMREX_GPU_DEVICE (int const jj, int const kk, int const ll) noexcept
         {
-            return fine_unsafe.contains(j, k, l) ? fine_unsafe(j, k, l) :  amrex::Real{0.};
+            return fine_unsafe.contains(jj, kk, ll) ? fine_unsafe(jj, kk, ll) :  amrex::Real{0.};
         };
 
         int const ii = i * m_refinement_ratio;
@@ -71,29 +73,29 @@ public:
         int const kk = k * m_refinement_ratio;
 #if AMREX_SPACEDIM == 2
         if (IDim == 0) {
-            coarse(i, j, k) = 0.25 * (
+            coarse(i, j, k) = 0.25_rt * (
                 fine(ii, jj, kk) + fine(ii + 1, jj, kk) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii, jj - 1, kk) + fine(ii + 1, jj - 1, kk) +
                     fine(ii, jj + 1, kk) + fine(ii + 1, jj + 1, kk)
                 )
             );
         } else if (IDim == 2) {
-            coarse(i, j, k) = 0.25 * (
+            coarse(i, j, k) = 0.25_rt * (
                 fine(ii, jj, kk) + fine(ii, jj + 1, kk) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii - 1, jj, kk) + fine(ii - 1, jj + 1, kk) +
                     fine(ii + 1, jj, kk) + fine(ii + 1, jj + 1, kk)
                 )
             );
         } else {
-            coarse(i, j, k) = 0.25 * (
+            coarse(i, j, k) = 0.25_rt * (
                 fine(ii, jj, kk) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii - 1, jj    , kk) + fine(ii + 1, jj    , kk) +
                     fine(ii    , jj - 1, kk) + fine(ii    , jj + 1, kk)
                 ) +
-                0.25 * (
+                0.25_rt * (
                     fine(ii - 1, jj - 1, kk) + fine(ii + 1, jj - 1, kk) +
                     fine(ii - 1, jj + 1, kk) + fine(ii + 1, jj + 1, kk)
                 )
@@ -101,64 +103,64 @@ public:
         }
 #elif AMREX_SPACEDIM == 3
         if (IDim == 0) {
-            coarse(i,j,k) = 0.125 * (
+            coarse(i,j,k) = 0.125_rt * (
                 fine(ii  , jj, kk) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii  , jj-1, kk  ) + fine(ii  , jj+1, kk  ) +
                     fine(ii  , jj  , kk-1) + fine(ii  , jj  , kk+1)
                 ) +
-                0.25 * (
+                0.25_rt * (
                     fine(ii  , jj-1, kk-1) + fine(ii  , jj+1, kk-1) +
                     fine(ii  , jj-1, kk+1) + fine(ii  , jj+1, kk+1)
                 ) +
                 fine(ii+1, jj, kk) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii+1, jj-1, kk  ) + fine(ii+1, jj+1, kk  ) +
                     fine(ii+1, jj  , kk-1) + fine(ii+1, jj  , kk+1)
                 ) +
-                0.25 * (
+                0.25_rt * (
                     fine(ii+1, jj-1, kk-1) + fine(ii+1, jj+1, kk-1) +
                     fine(ii+1, jj-1, kk+1) + fine(ii+1, jj+1, kk+1)
                 )
             );
         } else if (IDim == 1) {
-            coarse(i, j, k) = 0.125 * (
+            coarse(i, j, k) = 0.125_rt * (
                 fine(ii, jj , kk) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii-1, jj  , kk  ) + fine(ii+1, jj  , kk  ) +
                     fine(ii  , jj  , kk-1) + fine(ii  , jj  , kk+1)
-                 ) +
-                 0.25 * (
+                ) +
+                0.25_rt * (
                     fine(ii-1, jj  , kk-1) + fine(ii+1, jj  , kk-1) +
                     fine(ii-1, jj  , kk+1) + fine(ii+1, jj  , kk+1)
-                 ) +
-                 fine(ii, jj+1, kk) +
-                 0.5  * (
+                ) +
+                fine(ii, jj+1, kk) +
+                0.5_rt  * (
                     fine(ii-1, jj+1, kk  ) + fine(ii+1, jj+1, kk  ) +
                     fine(ii  , jj+1, kk-1) + fine(ii  , jj+1, kk+1)
-                 ) +
-                 0.25 * (
+                ) +
+                0.25_rt * (
                     fine(ii-1, jj+1, kk-1) + fine(ii+1, jj+1, kk-1) +
                     fine(ii-1, jj+1, kk+1) + fine(ii+1, jj+1, kk+1)
-                 )
+                )
              );
         } else {
-            coarse(i, j, k) = 0.125 * (
+            coarse(i, j, k) = 0.125_rt * (
                 fine(ii, jj, kk  ) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii-1, jj  , kk  ) + fine(ii+1, jj  , kk  ) +
                     fine(ii  , jj-1, kk  ) + fine(ii  , jj+1, kk  )
                 ) +
-                0.25 * (
+                0.25_rt * (
                     fine(ii-1, jj-1, kk  ) + fine(ii+1, jj-1, kk  ) +
                     fine(ii-1, jj+1, kk  ) + fine(ii+1, jj+1, kk  )
                 ) +
                 fine(ii, jj, kk+1) +
-                0.5  * (
+                0.5_rt  * (
                     fine(ii-1, jj  , kk+1) + fine(ii+1, jj  , kk+1) +
                     fine(ii  , jj-1, kk+1) + fine(ii  , jj+1, kk+1)
                 ) +
-                0.25 * (
+                0.25_rt * (
                     fine(ii-1, jj-1, kk+1) + fine(ii+1, jj-1, kk+1) +
                     fine(ii-1, jj+1, kk+1) + fine(ii+1, jj+1, kk+1)
                 )

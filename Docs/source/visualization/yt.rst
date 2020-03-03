@@ -8,25 +8,14 @@ to use yt within a `Jupyter notebook <http://jupyter.org/>`__.
 Installation
 ------------
 
-From the terminal:
+From the terminal, install the latest version of yt:
 
 ::
 
-    pip install yt jupyter
-
-or with the `Anaconda distribution <https://anaconda.org/>`__ of python (recommended):
-
-::
-
-    conda install -c conda-forge yt
-
-The latest version of `yt` can be required for advanced options (e.g., rigid
-injection for particles). To built `yt` directly from source, you can use
-
-::
-
+    pip install cython
     pip install git+https://github.com/yt-project/yt.git
 
+Alternatively, yt can be installed via their installation script, see `yt installation web page <https://yt-project.org/doc/installing.html>`__, which can be particularly useful to setup a post-processing workflow on supercomputers (see instructions in :doc:`../building/summit` to install yt on Summit).
 
 Visualizing the data
 --------------------
@@ -110,19 +99,6 @@ For instance, in order to obtain the array of position `x` as a numpy array:
 
     ad = ds.all_data()
     x = ad['particle_position_x'].to_ndarray()
-
-
-Read back-transformed diagnotics
---------------------------------
-
-When running a simulation in a boosted frame, WarpX has the capability to
-back-transform the simulation results to the laboratory frame of reference, which
-is often useful to study the physics. A set of function can be found in the
-python file :download:`read_raw_data.py<../../../Tools/read_raw_data.py>`.
-
-Alternatively, the main commands can be found in our example jupyter
-notebook for postprocessing
-:download:`Visualization.ipynb<../../../Tools/Visualization.ipynb>`.
 
 Further information
 -------------------
