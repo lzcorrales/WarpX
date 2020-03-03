@@ -1,9 +1,17 @@
+/* Copyright 2019-2020 Andrew Myers, Yinjian Zhao
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
 #ifndef WARPX_PARTICLES_COLLISION_COMPUTE_TEMPERATURE_H_
 #define WARPX_PARTICLES_COLLISION_COMPUTE_TEMPERATURE_H_
 
-#include <WarpXConst.H>
+#include "Utils/WarpXConst.H"
+
 
 template <typename T_index, typename T_R>
+AMREX_GPU_HOST_DEVICE
 T_R ComputeTemperature (
     T_index const Is, T_index const Ie, T_index const *I,
     T_R const *ux, T_R const *uy, T_R const *uz, T_R const m )

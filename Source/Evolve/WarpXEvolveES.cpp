@@ -1,11 +1,21 @@
-#include <WarpX.H>
-#include <WarpX_f.H>
+/* Copyright 2019 Andrew Myers, Axel Huebl, David Bizzozero
+ * David Grote, Maxence Thevenet, Remi Lehe
+ *
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
+#include "WarpX.H"
+#include "FortranInterface/WarpX_f.H"
+
 
 namespace
 {
     const std::string level_prefix {"Level_"};
 }
 
+#ifdef WARPX_DO_ELECTROSTATIC
 using namespace amrex;
 
 void
@@ -13,7 +23,7 @@ WarpX::EvolveES (int numsteps) {
 
     amrex::Print() << "Running in electrostatic mode \n";
 
-    BL_PROFILE("WarpX::EvolveES()");
+    WARPX_PROFILE("WarpX::EvolveES()");
     Real cur_time = t_new[0];
     static int last_plot_file_step = 0;
     static int last_check_file_step = 0;
@@ -58,7 +68,7 @@ WarpX::EvolveES (int numsteps) {
         // Beyond one step, particles have p^{n-1/2} and x^{n}.
         if (is_synchronized) {
             // on first step, push X by 0.5*dt
-            mypc->PushXES(0.5*dt[lev]);
+            mypc->PushX(0.5*dt[lev]);
             UpdatePlasmaInjectionPosition(0.5*dt[lev]);
             mypc->Redistribute();
             mypc->DepositCharge(rhoNodal);
@@ -95,7 +105,7 @@ WarpX::EvolveES (int numsteps) {
 
         if (cur_time + dt[0] >= stop_time - 1.e-3*dt[0] || step == numsteps_max-1) {
             // on last step, push by only 0.5*dt to synchronize all at n+1/2
-            mypc->PushXES(-0.5*dt[lev]);
+            mypc->PushX(-0.5*dt[lev]);
             UpdatePlasmaInjectionPosition(-0.5*dt[lev]);
             is_synchronized = true;
         }
@@ -205,3 +215,4 @@ void WarpX::getLevelMasks(Vector<std::unique_ptr<FabArray<BaseFab<int> > > >& ma
         }
     }
 }
+#endif // WARPX_DO_ELECTROSTATIC

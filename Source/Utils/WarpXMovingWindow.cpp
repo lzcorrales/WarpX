@@ -1,34 +1,18 @@
-#include <WarpX.H>
-#include <WarpXConst.H>
+/* Copyright 2019-2020 Andrew Myers, Axel Huebl, Maxence Thevenet
+ * Remi Lehe, Revathi Jambunathan, Weiqun Zhang
+ *
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
+#include "Parallelization/GuardCellManager.H"
+#include "WarpX.H"
+#include "Utils/WarpXUtil.H"
+#include "Utils/WarpXConst.H"
+
 
 using namespace amrex;
-
-namespace {
-WarpXParser makeParser (std::string const& parse_function)
-{
-    WarpXParser parser(parse_function);
-    parser.registerVariables({"x","y","z"});
-    ParmParse pp("my_constants");
-    std::set<std::string> symbols = parser.symbols();
-    symbols.erase("x");
-    symbols.erase("y");
-    symbols.erase("z");
-    for (auto it = symbols.begin(); it != symbols.end(); ) {
-        Real v;
-        if (pp.query(it->c_str(), v)) {
-           parser.setConstant(*it, v);
-           it = symbols.erase(it);
-        } else {
-           ++it;
-        }
-    }
-    for (auto const& s : symbols) {
-        amrex::Abort(" ExternalEBFieldOnGrid::makeParser::Unknown symbol "+s);
-    }
-    return parser;
-}
-}
-
 
 void
 WarpX::UpdatePlasmaInjectionPosition (Real a_dt)
@@ -54,6 +38,9 @@ int
 WarpX::MoveWindow (bool move_j)
 {
     if (do_moving_window == 0) return 0;
+
+    IntVect ng_extra = guard_cells.ng_Extra;
+    IntVect ng_zero  = IntVect::TheZeroVector();
 
     // Update the continuous position of the moving window,
     // and of the plasma injection
@@ -124,38 +111,49 @@ WarpX::MoveWindow (bool move_j)
 
         // Shift each component of vector fields (E, B, j)
         for (int dim = 0; dim < 3; ++dim) {
-
             // Fine grid
-            // initialize with external field = true and B_flag = true;
-            shiftMF(*Bfield_fp[lev][dim], geom[lev], num_shift, dir, true, true);
-            // initialize with external field = true and B_flag = false;
-            shiftMF(*Efield_fp[lev][dim], geom[lev], num_shift, dir, true, false);
+            ParserWrapper<3> *Bfield_parser;
+            ParserWrapper<3> *Efield_parser;
+            bool use_Bparser = false;
+            bool use_Eparser = false;
+            if (B_ext_grid_s == "parse_b_ext_grid_function") {
+                use_Bparser = true;
+                if (dim == 0) Bfield_parser = Bxfield_parser.get();
+                if (dim == 1) Bfield_parser = Byfield_parser.get();
+                if (dim == 2) Bfield_parser = Bzfield_parser.get();
+            }
+            if (E_ext_grid_s == "parse_e_ext_grid_function") {
+                use_Eparser = true;
+                if (dim == 0) Efield_parser = Exfield_parser.get();
+                if (dim == 1) Efield_parser = Eyfield_parser.get();
+                if (dim == 2) Efield_parser = Ezfield_parser.get();
+            }
+            shiftMF(*Bfield_fp[lev][dim], geom[lev], num_shift, dir, ng_extra, B_external_grid[dim], use_Bparser, Bfield_parser);
+            shiftMF(*Efield_fp[lev][dim], geom[lev], num_shift, dir, ng_extra, E_external_grid[dim], use_Eparser, Efield_parser);
             if (move_j) {
-                shiftMF(*current_fp[lev][dim], geom[lev], num_shift, dir);
+                shiftMF(*current_fp[lev][dim], geom[lev], num_shift, dir, ng_zero);
             }
             if (do_pml && pml[lev]->ok()) {
                 const std::array<MultiFab*, 3>& pml_B = pml[lev]->GetB_fp();
                 const std::array<MultiFab*, 3>& pml_E = pml[lev]->GetE_fp();
-                shiftMF(*pml_B[dim], geom[lev], num_shift, dir);
-                shiftMF(*pml_E[dim], geom[lev], num_shift, dir);
+                shiftMF(*pml_B[dim], geom[lev], num_shift, dir, ng_extra);
+                shiftMF(*pml_E[dim], geom[lev], num_shift, dir, ng_extra);
             }
 
             if (lev > 0) {
-                // Coarse grid
-                // initialize with external field = true and B_flag = true;
-                shiftMF(*Bfield_cp[lev][dim], geom[lev-1], num_shift_crse, dir, true, true);
-                // initialize with external field = true and B_flag = false;
-                shiftMF(*Efield_cp[lev][dim], geom[lev-1], num_shift_crse, dir, true, false);
-                shiftMF(*Bfield_aux[lev][dim], geom[lev], num_shift, dir);
-                shiftMF(*Efield_aux[lev][dim], geom[lev], num_shift, dir);
+                // coarse grid
+                shiftMF(*Bfield_cp[lev][dim], geom[lev-1], num_shift_crse, dir, ng_zero, B_external_grid[dim], use_Bparser, Bfield_parser);
+                shiftMF(*Efield_cp[lev][dim], geom[lev-1], num_shift_crse, dir, ng_zero, E_external_grid[dim], use_Eparser, Efield_parser);
+                shiftMF(*Bfield_aux[lev][dim], geom[lev], num_shift, dir, ng_zero);
+                shiftMF(*Efield_aux[lev][dim], geom[lev], num_shift, dir, ng_zero);
                 if (move_j) {
-                    shiftMF(*current_cp[lev][dim], geom[lev-1], num_shift_crse, dir);
+                    shiftMF(*current_cp[lev][dim], geom[lev-1], num_shift_crse, dir, ng_zero);
                 }
                 if (do_pml && pml[lev]->ok()) {
                     const std::array<MultiFab*, 3>& pml_B = pml[lev]->GetB_cp();
                     const std::array<MultiFab*, 3>& pml_E = pml[lev]->GetE_cp();
-                    shiftMF(*pml_B[dim], geom[lev-1], num_shift_crse, dir);
-                    shiftMF(*pml_E[dim], geom[lev-1], num_shift_crse, dir);
+                    shiftMF(*pml_B[dim], geom[lev-1], num_shift_crse, dir, ng_extra);
+                    shiftMF(*pml_E[dim], geom[lev-1], num_shift_crse, dir, ng_extra);
                 }
             }
         }
@@ -163,19 +161,19 @@ WarpX::MoveWindow (bool move_j)
         // Shift scalar component F for dive cleaning
         if (do_dive_cleaning) {
             // Fine grid
-            shiftMF(*F_fp[lev],   geom[lev], num_shift, dir);
+            shiftMF(*F_fp[lev], geom[lev], num_shift, dir, ng_zero);
             if (do_pml && pml[lev]->ok()) {
                 MultiFab* pml_F = pml[lev]->GetF_fp();
-                shiftMF(*pml_F, geom[lev], num_shift, dir);
+                shiftMF(*pml_F, geom[lev], num_shift, dir, ng_extra);
             }
             if (lev > 0) {
                 // Coarse grid
-                shiftMF(*F_cp[lev], geom[lev-1], num_shift_crse, dir);
+                shiftMF(*F_cp[lev], geom[lev-1], num_shift_crse, dir, ng_zero);
                 if (do_pml && pml[lev]->ok()) {
                     MultiFab* pml_F = pml[lev]->GetF_cp();
-                    shiftMF(*pml_F, geom[lev-1], num_shift_crse, dir);
+                    shiftMF(*pml_F, geom[lev-1], num_shift_crse, dir, ng_zero);
                 }
-                shiftMF(*rho_cp[lev], geom[lev-1], num_shift_crse, dir);
+                shiftMF(*rho_cp[lev], geom[lev-1], num_shift_crse, dir, ng_zero);
             }
         }
 
@@ -183,10 +181,10 @@ WarpX::MoveWindow (bool move_j)
         if (move_j) {
             if (rho_fp[lev]){
                 // Fine grid
-                shiftMF(*rho_fp[lev],   geom[lev], num_shift, dir);
+                shiftMF(*rho_fp[lev],   geom[lev], num_shift, dir, ng_zero);
                 if (lev > 0){
                     // Coarse grid
-                    shiftMF(*rho_cp[lev], geom[lev-1], num_shift_crse, dir);
+                    shiftMF(*rho_cp[lev], geom[lev-1], num_shift_crse, dir, ng_zero);
                 }
             }
         }
@@ -235,21 +233,34 @@ WarpX::MoveWindow (bool move_j)
 
 void
 WarpX::shiftMF (MultiFab& mf, const Geometry& geom, int num_shift, int dir,
-                bool ext_init, bool B_flag)
+                IntVect ng_extra, amrex::Real external_field, bool useparser,
+                ParserWrapper<3> *field_parser)
 {
-    BL_PROFILE("WarpX::shiftMF()");
+    WARPX_PROFILE("WarpX::shiftMF()");
     const BoxArray& ba = mf.boxArray();
     const DistributionMapping& dm = mf.DistributionMap();
     const int nc = mf.nComp();
     const IntVect& ng = mf.nGrowVect();
-    // default value of external_field = 0.0 for initialization of mf
-    amrex::Real external_field = 0.0;
 
     AMREX_ALWAYS_ASSERT(ng.min() >= num_shift);
 
     MultiFab tmpmf(ba, dm, nc, ng);
     MultiFab::Copy(tmpmf, mf, 0, 0, nc, ng);
-    tmpmf.FillBoundary(geom.periodicity());
+
+    if ( WarpX::safe_guard_cells ) {
+        // Fill guard cells.
+        tmpmf.FillBoundary(geom.periodicity());
+    } else {
+        IntVect ng_mw = IntVect::TheUnitVector();
+        // Enough guard cells in the MW direction
+        ng_mw[dir] = num_shift;
+        // Add the extra cell (if momentum-conserving gather with staggered field solve)
+        ng_mw += ng_extra;
+        // Make sure we don't exceed number of guard cells allocated
+        ng_mw = ng_mw.min(ng);
+        // Fill guard cells.
+        tmpmf.FillBoundary(ng_mw, geom.periodicity());
+    }
 
     // Make a box that covers the region that the window moved into
     const IndexType& typ = ba.ixType();
@@ -281,51 +292,6 @@ WarpX::shiftMF (MultiFab& mf, const Geometry& geom, int num_shift, int dir,
 
     const RealBox& real_box = geom.ProbDomain();
     const auto dx = geom.CellSizeArray();
-    std::unique_ptr<ParserWrapper> field_parsewrap;
-    bool useparser = false;
-
-    if (ext_init == true && B_flag == true) {
-        if (B_ext_grid_s == "constant" || B_ext_grid_s == "default")
-            external_field = B_external_grid[dir];
-        if (B_ext_grid_s == "parse_b_ext_grid_function") {
-           useparser = true;
-           if (dir==0)
-              field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_Bx_ext_grid_function)));
-           if (dir==1)
-#if (AMREX_SPACEDIM==2)
-               field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_Bz_ext_grid_function)));
-#else
-               field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_By_ext_grid_function)));
-#endif
-           if (dir==2)
-               field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_Bz_ext_grid_function)));
-        }
-    }
-    if (ext_init == true && B_flag == false) {
-        if (E_ext_grid_s == "constant" || E_ext_grid_s == "default")
-            external_field = E_external_grid[dir];
-        if (E_ext_grid_s == "parse_e_ext_grid_function") {
-           if (dir==0)
-               field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_Ex_ext_grid_function)));
-           if (dir==1)
-#if (AMREX_SPACEDIM==2)
-               field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_Ez_ext_grid_function)));
-#else
-               field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_Ey_ext_grid_function)));
-#endif
-           if (dir==2)
-               field_parsewrap.reset(new ParserWrapper(
-                              makeParser(str_Ez_ext_grid_function)));
-           useparser = true;
-        }
-    }
 
 #ifdef _OPENMP
 #pragma omp parallel if (Gpu::notInLaunchRegion())
@@ -352,7 +318,6 @@ WarpX::shiftMF (MultiFab& mf, const Geometry& geom, int num_shift, int dir,
                 for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
                     mf_type[idim] = mf_IndexType.nodeCentered(idim);
                 }
-                ParserWrapper *field_wrap = field_parsewrap.get();
 
                 amrex::ParallelFor (outbox, nc,
                       [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
@@ -370,10 +335,8 @@ WarpX::shiftMF (MultiFab& mf, const Geometry& geom, int num_shift, int dir,
                       Real fac_z = (1.0 - mf_type[2]) * dx[2]*0.5;
                       Real z = k*dx[2] + real_box.lo(2) + fac_z;
 #endif
-                      srcfab(i,j,k,n) = field_wrap->getField(x,y,z);
-                }
-                , amrex::Gpu::numThreadsPerBlockParallelFor() * sizeof(double)*3
-                );
+                      srcfab(i,j,k,n) = (*field_parser)(x,y,z);
+                });
             }
 
         }
@@ -389,6 +352,41 @@ WarpX::shiftMF (MultiFab& mf, const Geometry& geom, int num_shift, int dir,
             dstfab(i,j,k,n) = srcfab(i+shift.x,j+shift.y,k+shift.z,n);
         });
     }
+}
+
+void
+WarpX::ShiftGalileanBoundary ()
+{
+    Real cur_time = t_new[0];
+    Real new_lo[AMREX_SPACEDIM];
+    Real new_hi[AMREX_SPACEDIM];
+    const Real* current_lo = geom[0].ProbLo();
+    const Real* current_hi = geom[0].ProbHi();
+
+    Real time_shift = (cur_time - time_of_last_gal_shift);
+
+    #if (AMREX_SPACEDIM == 3)
+        amrex::Array<amrex::Real,3> galilean_shift = { v_galilean[0]* time_shift, v_galilean[1]*time_shift, v_galilean[2]*time_shift };
+    #elif (AMREX_SPACEDIM == 2)
+        amrex::Array<amrex::Real,3> galilean_shift = { v_galilean[0]* time_shift, std::numeric_limits<Real>::quiet_NaN(), v_galilean[2]*time_shift };
+    #endif
+
+    #if (AMREX_SPACEDIM == 3)
+        for (int i=0; i<AMREX_SPACEDIM; i++) {
+            new_lo[i] = current_lo[i] + galilean_shift[i];
+            new_hi[i] = current_hi[i] + galilean_shift[i];
+        }
+    #elif (AMREX_SPACEDIM == 2)
+    {
+        new_lo[0] = current_lo[0] + galilean_shift[0];
+        new_hi[0] = current_hi[0] + galilean_shift[0];
+        new_lo[1] = current_lo[1] + galilean_shift[2];
+        new_hi[1] = current_hi[1] + galilean_shift[2];
+      }
+    #endif
+    time_of_last_gal_shift = cur_time;
+
+    ResetProbDomain(RealBox(new_lo, new_hi));
 }
 
 void
