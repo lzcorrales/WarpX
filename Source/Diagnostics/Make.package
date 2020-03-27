@@ -1,3 +1,9 @@
+CEXE_sources += MultiDiagnostics.cpp
+CEXE_sources += Diagnostics.cpp
+CEXE_sources += FullDiagnostics.cpp
+CEXE_headers += Diagnostics.H
+CEXE_headers += FullDiagnostics.H
+CEXE_headers += MultiDiagnostics.H
 CEXE_sources += WarpXIO.cpp
 CEXE_sources += BackTransformedDiagnostic.cpp
 CEXE_sources += ParticleIO.cpp
@@ -12,6 +18,8 @@ ifeq ($(USE_OPENPMD), TRUE)
 endif
 
 include $(WARPX_HOME)/Source/Diagnostics/ReducedDiags/Make.package
+include $(WARPX_HOME)/Source/Diagnostics/ComputeDiagFunctors/Make.package
+include $(WARPX_HOME)/Source/Diagnostics/FlushFormats/Make.package
 
 INCLUDE_LOCATIONS += $(WARPX_HOME)/Source/Diagnostics
 VPATH_LOCATIONS   += $(WARPX_HOME)/Source/Diagnostics
