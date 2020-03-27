@@ -122,8 +122,8 @@ struct InjectorMomentumJuttner
     // the temperature parameter theta,
     // boost velocity/c beta,
     // and boost direction dir respectively.
-    InjectorMomentumJuttner(amrex::Real t, amrex::Real b, int d) noexcept
-        : dir(d), Bdir(b)
+    InjectorMomentumJuttner(amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real x, int d) noexcept
+        : sigma(s), lambdae(l), beta0(b), nbnd(n), xcs(x), dir(d)
         {}
 
     AMREX_GPU_HOST_DEVICE
@@ -133,47 +133,17 @@ struct InjectorMomentumJuttner
         // Sobol method for sampling MJ Speeds,
         // from Zenitani 2015 (Phys. Plasmas 22, 042116).
         amrex::Real x1, x2, gamma, theta, beta;
-	amrex::Real delta, xcs;
+	amrex::Real delta;
         amrex::Real u [3];
 	int iterations = 0;
-	xcs = 10;
-	delta = 0.4;
-	beta = 3.061862179817E-2;
-	// beta = 3.061862179817E-02;
-	//amrex::Real delta;
-	//delta = delta;
-	// if(( xcs-delta/2 < x && x < xcs+delta/2) || ( -xcs-delta/2 < x && x < -xcs+delta/2) )
-	// {
-	//     theta = 1.572;
-	// }
-	// else
-	// {
-	//     theta = 0.15;
-	// }
-	//theta = 1.572 - (1.572-0.15)*std::pow(1+std::tanh((x - xcs) / delta)-std::tanh((x + xcs) / delta),2);
-	//theta = 30 / 4 * ( ( 101./100. - std::pow( std::tanh( ( x - xcs ) / delta ), 2) ) / ( 1. + 4 * std::pow( std::cosh( ( x - xcs ) / 0.040824291) , -2) ) +
-	//		   ( 101./100. - std::pow( std::tanh( ( x + xcs ) / delta ), 2) ) / ( 1. + 4 * std::pow( std::cosh( ( x + xcs ) / 0.040824291) , -2) ) );
-	beta = Bdir * beta * (std::pow(std::cosh( (x + xcs) / delta ),-1) - std::pow(std::cosh( (x - xcs) / delta ),-1));
-	//beta = Bdir * 0.3;
-	//beta = 0;
-	//beta = 0;
-	//x1 = (std::floor((x / 14.69693846 + 0.5) * 6144) + .5) * 14.69693846/6144 - 7.348469232;
-	// theta = 30./4. * ( 51./50. - std::pow( -1. - std::tanh((x1 - xcs) / delta) + std::tanh((x1 + xcs) / delta) , 2 ) )/
-	//     (1. + 4.*( std::pow( std::cosh((x1 + xcs) / delta), -2 )  + std::pow( std::cosh((x1 - xcs) / delta), -2 ) ) );
+	delta = std::sqrt(nbnd*sigma)/(2*std::abs(beta0))*lambdae;
+	beta = -1 * beta0 * (std::pow(std::cosh( (x + xcs) / delta ),-1) - std::pow(std::cosh( (x - xcs) / delta ),-1));
 	theta = 30./4. * ( 51./50. - std::pow( -1. - std::tanh((x - xcs) / delta) + std::tanh((x + xcs) / delta) , 2 ) ) /
 	    ( ( 1. + 4.*( std::pow( std::cosh((x + xcs) / delta), -1 )  + std::pow( std::cosh((x - xcs) / delta), -1 ) ) ) *
-	      std::pow( 1. - std::pow(0.3 * (std::pow(std::cosh( (x + xcs) / delta ), -1 ) - std::pow(std::cosh( (x - xcs) / delta ), -1 ) ), 2 ), 0.5 ) );
-	// theta = 30./4. * ( 51./50. - std::pow( -1. - std::tanh((x - xcs) / delta) + std::tanh((x + xcs) / delta) , 2 ) ) /
-	//     ( ( 1. + 4.*( std::pow( std::cosh((x + xcs) / delta), -1 )  + std::pow( std::cosh((x - xcs) / delta), -1 ) ) ) );
-	//theta = 1.52;
-	// amrex::Print() << "x:" << x << std::endl;
-	// amrex::Print() << "Numerator:" << ( 51./50. - std::pow( -1. - std::tanh((x - xcs) / delta) + std::tanh((x + xcs) / delta) , 2 ) ) << std::endl;
-	// amrex::Print() << "Denomenator:" << (1. + 4.*( std::pow( std::cosh((x + xcs) / delta), -2 ) ) + std::pow( std::cosh((x - xcs) / delta), -2 ) ) << std::endl;
-        // amrex::Print() << "Theata:" << theta << std::endl;
+	      std::pow( 1. - std::pow(beta0 * (std::pow(std::cosh( (x + xcs) / delta ), -1 ) - std::pow(std::cosh( (x - xcs) / delta ), -1 ) ), 2 ), 0.5 ) );
+	
         x1 = 0.;
         gamma = 0.;
-	//beta = (std::floor((x / 14.69693846 + 0.5) * 6144) - .5) * 14.69693846/6144 - 7.348469232;
-	//beta = 0;
         u[dir] = 0.;
         // This condition is equation 10 in Zenitani,
         // though x1 is defined differently.
@@ -224,7 +194,7 @@ struct InjectorMomentumJuttner
 
 private:
     int dir;
-    amrex::Real Bdir;
+    amrex::Real sigma, lambdae, beta0, nbnd, xcs;
 };
 
 
@@ -313,9 +283,9 @@ struct InjectorMomentum
 
      // This constructor stores a InjectorMomentumJuttner in union object.
      InjectorMomentum (InjectorMomentumJuttner* t,
-                       amrex::Real theta, amrex::Real beta, int dir)
+                       amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real x, int d)
          : type(Type::juttner),
-           object(t, theta, beta, dir)
+           object(t, s, l, b, n, x, d)
     { }
 
     // This constructor stores a InjectorMomentumCustom in union object.
@@ -408,8 +378,8 @@ private:
                 amrex::Real t, amrex::Real b, int dir) noexcept
             : boltzmann(t,b,dir) {}
         Object (InjectorMomentumJuttner*,
-                amrex::Real t, amrex::Real b, int dir) noexcept
-            : juttner(t,b,dir) {}
+                amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real x, int d) noexcept
+            : juttner(s, l, b, n, x, d) {}
         Object (InjectorMomentumRadialExpansion*,
                 amrex::Real u_over_r) noexcept
             : radial_expansion(u_over_r) {}
