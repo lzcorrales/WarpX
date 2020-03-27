@@ -308,17 +308,22 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
         // Construct InjectorMomentum with InjectorMomentumBoltzmann.
         inj_mom.reset(new InjectorMomentum((InjectorMomentumBoltzmann*)nullptr, theta, beta, dir));
     } else if (mom_dist_s == "maxwell_juttner"){
-        Real beta = 0.;
-        Real theta = 10.;
+        Real beta = 0.3;
+        Real sigma = 30.;
+	Real lambdae = 0.01;
+	Real nbnd = 1./5.;
+	Real xcs = 0.0;
         int dir = 0;
         std::string direction = "x";
         pp.query("beta", beta);
         if(beta < 0){
             amrex::Abort("Please enter a positive beta value. Drift direction is set with <s_name>.bulk_vel_dir = 'x' or '+x', '-x', 'y' or '+y', etc.");
         }
-        pp.query("theta", theta);
+        pp.query("sigma", sigma);	
+	pp.query("lambdae", lambdae);
         pp.query("bulk_vel_dir", direction);
-	beta = 1;
+	pp.query("nbnd", nbnd);
+	pp.query("xcs", xcs);
         if(direction[0] == '-'){
             beta = -beta;
         }
@@ -338,7 +343,7 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
             amrex::Abort(direction.c_str());
         }
         // Construct InjectorMomentum with InjectorMomentumJuttner.
-        inj_mom.reset(new InjectorMomentum((InjectorMomentumJuttner*)nullptr, theta, beta, dir));
+        inj_mom.reset(new InjectorMomentum((InjectorMomentumJuttner*)nullptr, sigma, lambdae, beta, nbnd, xcs, dir));
     } else if (mom_dist_s == "radial_expansion") {
         Real u_over_r = 0.;
         pp.query("u_over_r", u_over_r);
