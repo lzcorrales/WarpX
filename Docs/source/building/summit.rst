@@ -1,4 +1,6 @@
-Building WarpX for Summit (OLCF)
+.. _building-summit:
+
+Building WarpX on Summit (OLCF)
 ================================
 
 For the `Summit cluster
@@ -21,22 +23,47 @@ Then, ``cd`` into the directory ``WarpX`` and use the following set of commands 
 
     module load gcc
     module load cuda
-    make -j 4 USE_GPU=TRUE
+    make -j 16 COMP=gcc USE_GPU=TRUE
 
 See :doc:`../running_cpp/platforms` for more information on how to run WarpX on Summit.
 
-See :doc:`../visualization/yt` for more information on how to visualize the simulation results. In order to build yt **and** a Python environment, you can download the yt installation script as explained in section "All-in-One Installation Script" of the `yt installation web page <https://yt-project.org/doc/installing.html>`__, and run
+See :doc:`../visualization/yt` for more information on how to visualize the simulation results.
 
-.. code-block:: sh
 
-    module purge
+.. _building-cori-openPMD:
+
+Building WarpX with openPMD support
+-----------------------------------
+
+First, load the appropriate modules:
+
+.. code-block:: bash
+
     module load gcc
+    module load cuda
+    module load cmake
+    module load hdf5/1.10.4
 
-Then modify the few first lines of the installation script ``install_script.sh`` to have
+Then, in the ``warpx_directory``, download and build openPMD-api:
 
-::
+.. code-block:: bash
 
-   INST_YT_SOURCE=1
-   INST_SCIPY=1
+   git clone https://github.com/openPMD/openPMD-api.git
+   mkdir openPMD-api-build
+   cd openPMD-api-build
+   cmake ../openPMD-api -DopenPMD_USE_PYTHON=OFF -DCMAKE_INSTALL_PREFIX=../openPMD-install/ -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON -DCMAKE_INSTALL_RPATH='$ORIGIN'
+   cmake --build . --target install --parallel 16
 
-and follow the instructions from the yt website.
+.. note:
+
+   On Summit, only compute nodes provide the infiniband hardware that Summit's MPI module expects, ``jsrun`` must be used on Summit instead of ``mpiexec``, and ``$HOME`` directories are read-only when computing.
+   In order to run openPMD-api unit tests, run on a compute node inside ``$PROJWORK``, e.g. via ``bsub -P <addYourProjectID> -W 2:00 -nnodes 1 -Is /bin/bash``, and add ``-DMPIEXEC_EXECUTABLE=$(which jsrun)`` to the CMake options.
+
+Finally, compile WarpX:
+
+.. code-block:: bash
+
+   cd ../WarpX
+   export PKG_CONFIG_PATH=$PWD/../openPMD-install/lib64/pkgconfig:$PKG_CONFIG_PATH
+   export CMAKE_PREFIX_PATH=$PWD/../openPMD-install:$CMAKE_PREFIX_PATH
+   make -j 16 COMP=gcc USE_GPU=TRUE USE_OPENPMD=TRUE

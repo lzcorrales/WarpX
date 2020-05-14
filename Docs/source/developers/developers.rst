@@ -12,6 +12,7 @@ Our Doxygen API documentation in classic formatting `is located here <../_static
 
    amrex_basics
    repo_organization
+   dimensionality
    fields
    particles
    initialization
@@ -19,6 +20,7 @@ Our Doxygen API documentation in classic formatting `is located here <../_static
    moving_window
    portability
    profiling
+   contributing
    testing
    documentation
    workflow
