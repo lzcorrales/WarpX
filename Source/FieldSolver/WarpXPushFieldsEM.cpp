@@ -29,7 +29,11 @@ using namespace amrex;
 namespace {
     void
     PushPSATDSinglePatch (
+#ifdef WARPX_DIM_RZ
+        SpectralSolverRZ& solver,
+#else
         SpectralSolver& solver,
+#endif
         std::array<std::unique_ptr<amrex::MultiFab>,3>& Efield,
         std::array<std::unique_ptr<amrex::MultiFab>,3>& Bfield,
         std::array<std::unique_ptr<amrex::MultiFab>,3>& current,
@@ -38,25 +42,50 @@ namespace {
         using Idx = SpectralFieldIndex;
 
         // Perform forward Fourier transform
+#ifdef WARPX_DIM_RZ
+        solver.ForwardTransform(*Efield[0], Idx::Ex,
+                                *Efield[1], Idx::Ey);
+#else
         solver.ForwardTransform(*Efield[0], Idx::Ex);
         solver.ForwardTransform(*Efield[1], Idx::Ey);
+#endif
         solver.ForwardTransform(*Efield[2], Idx::Ez);
+#ifdef WARPX_DIM_RZ
+        solver.ForwardTransform(*Bfield[0], Idx::Bx,
+                                *Bfield[1], Idx::By);
+#else
         solver.ForwardTransform(*Bfield[0], Idx::Bx);
         solver.ForwardTransform(*Bfield[1], Idx::By);
+#endif
         solver.ForwardTransform(*Bfield[2], Idx::Bz);
+#ifdef WARPX_DIM_RZ
+        solver.ForwardTransform(*current[0], Idx::Jx,
+                                *current[1], Idx::Jy);
+#else
         solver.ForwardTransform(*current[0], Idx::Jx);
         solver.ForwardTransform(*current[1], Idx::Jy);
+#endif
         solver.ForwardTransform(*current[2], Idx::Jz);
         solver.ForwardTransform(*rho, Idx::rho_old, 0);
         solver.ForwardTransform(*rho, Idx::rho_new, 1);
         // Advance fields in spectral space
         solver.pushSpectralFields();
         // Perform backward Fourier Transform
+#ifdef WARPX_DIM_RZ
+        solver.BackwardTransform(*Efield[0], Idx::Ex,
+                                 *Efield[1], Idx::Ey);
+#else
         solver.BackwardTransform(*Efield[0], Idx::Ex);
         solver.BackwardTransform(*Efield[1], Idx::Ey);
+#endif
         solver.BackwardTransform(*Efield[2], Idx::Ez);
+#ifdef WARPX_DIM_RZ
+        solver.BackwardTransform(*Bfield[0], Idx::Bx,
+                                 *Bfield[1], Idx::By);
+#else
         solver.BackwardTransform(*Bfield[0], Idx::Bx);
         solver.BackwardTransform(*Bfield[1], Idx::By);
+#endif
         solver.BackwardTransform(*Bfield[2], Idx::Bz);
     }
 }
@@ -66,13 +95,7 @@ WarpX::PushPSATD (amrex::Real a_dt)
 {
     for (int lev = 0; lev <= finest_level; ++lev) {
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(dt[lev] == a_dt, "dt must be consistent");
-        if (fft_hybrid_mpi_decomposition){
-#ifdef WARPX_USE_PSATD_HYBRID
-            PushPSATD_hybridFFT(lev, a_dt);
-#endif
-        } else {
-            PushPSATD_localFFT(lev, a_dt);
-        }
+        PushPSATD(lev, a_dt);
 
         // Evolve the fields in the PML boxes
         if (do_pml && pml[lev]->ok()) {
@@ -82,7 +105,7 @@ WarpX::PushPSATD (amrex::Real a_dt)
 }
 
 void
-WarpX::PushPSATD_localFFT (int lev, amrex::Real /* dt */)
+WarpX::PushPSATD (int lev, amrex::Real /* dt */)
 {
     // Update the fields on the fine and coarse patch
     PushPSATDSinglePatch( *spectral_solver_fp[lev],
@@ -137,9 +160,9 @@ WarpX::EvolveB (int lev, PatchType patch_type, amrex::Real a_dt)
 #endif
         for ( MFIter mfi(*pml_B[0], TilingIfNotGPU()); mfi.isValid(); ++mfi )
         {
-            const Box& tbx  = mfi.tilebox(Bx_nodal_flag);
-            const Box& tby  = mfi.tilebox(By_nodal_flag);
-            const Box& tbz  = mfi.tilebox(Bz_nodal_flag);
+            const Box& tbx  = mfi.tilebox( pml_B[0]->ixType().toIntVect() );
+            const Box& tby  = mfi.tilebox( pml_B[1]->ixType().toIntVect() );
+            const Box& tbz  = mfi.tilebox( pml_B[2]->ixType().toIntVect() );
             auto const& pml_Bxfab = pml_B[0]->array(mfi);
             auto const& pml_Byfab = pml_B[1]->array(mfi);
             auto const& pml_Bzfab = pml_B[2]->array(mfi);
@@ -232,47 +255,19 @@ WarpX::EvolveE (int lev, PatchType patch_type, amrex::Real a_dt)
     const int patch_level = (patch_type == PatchType::fine) ? lev : lev-1;
     const std::array<Real,3>& dx = WarpX::CellSize(patch_level);
     const Real dtsdx_c2 = c2dt/dx[0], dtsdy_c2 = c2dt/dx[1], dtsdz_c2 = c2dt/dx[2];
-    const Real dxinv = 1./dx[0];
 
-    MultiFab *Ex, *Ey, *Ez, *Bx, *By, *Bz, *jx, *jy, *jz, *F;
+    MultiFab* F;
     if (patch_type == PatchType::fine)
     {
-        Ex = Efield_fp[lev][0].get();
-        Ey = Efield_fp[lev][1].get();
-        Ez = Efield_fp[lev][2].get();
-        Bx = Bfield_fp[lev][0].get();
-        By = Bfield_fp[lev][1].get();
-        Bz = Bfield_fp[lev][2].get();
-        jx = current_fp[lev][0].get();
-        jy = current_fp[lev][1].get();
-        jz = current_fp[lev][2].get();
         F  = F_fp[lev].get();
     }
     else if (patch_type == PatchType::coarse)
     {
-        Ex = Efield_cp[lev][0].get();
-        Ey = Efield_cp[lev][1].get();
-        Ez = Efield_cp[lev][2].get();
-        Bx = Bfield_cp[lev][0].get();
-        By = Bfield_cp[lev][1].get();
-        Bz = Bfield_cp[lev][2].get();
-        jx = current_cp[lev][0].get();
-        jy = current_cp[lev][1].get();
-        jz = current_cp[lev][2].get();
         F  = F_cp[lev].get();
     }
 
-    MultiFab* cost = WarpX::getCosts(lev);
-    const IntVect& rr = (lev > 0) ? refRatio(lev-1) : IntVect::TheUnitVector();
-
-    // xmin is only used by the kernel for cylindrical geometry,
-    // in which case it is actually rmin.
-    const Real xmin = Geom(0).ProbLo(0);
-
     if (do_pml && pml[lev]->ok())
     {
-        if (F) pml[lev]->ExchangeF(patch_type, F, do_pml_in_domain);
-
         const auto& pml_B = (patch_type == PatchType::fine) ? pml[lev]->GetB_fp() : pml[lev]->GetB_cp();
         const auto& pml_E = (patch_type == PatchType::fine) ? pml[lev]->GetE_fp() : pml[lev]->GetE_cp();
         const auto& pml_j = (patch_type == PatchType::fine) ? pml[lev]->Getj_fp() : pml[lev]->Getj_cp();
@@ -284,9 +279,9 @@ WarpX::EvolveE (int lev, PatchType patch_type, amrex::Real a_dt)
 #endif
         for ( MFIter mfi(*pml_E[0], TilingIfNotGPU()); mfi.isValid(); ++mfi )
         {
-            const Box& tex  = mfi.tilebox(Ex_nodal_flag);
-            const Box& tey  = mfi.tilebox(Ey_nodal_flag);
-            const Box& tez  = mfi.tilebox(Ez_nodal_flag);
+            const Box& tex  = mfi.tilebox( pml_E[0]->ixType().toIntVect() );
+            const Box& tey  = mfi.tilebox( pml_E[1]->ixType().toIntVect() );
+            const Box& tez  = mfi.tilebox( pml_E[2]->ixType().toIntVect() );
 
             auto const& pml_Exfab = pml_E[0]->array(mfi);
             auto const& pml_Eyfab = pml_E[1]->array(mfi);
@@ -476,10 +471,9 @@ WarpX::ApplyInverseVolumeScalingToCurrentDensity (MultiFab* Jx, MultiFab* Jy, Mu
     const Real dr = dx[0];
 
     constexpr int NODE = amrex::IndexType::NODE;
-    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(Jx->ixType().ixType()[0] != NODE,
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(Jx->ixType().toIntVect()[0] != NODE,
         "Jr should never node-centered in r");
 
-    Box tilebox;
 
     for ( MFIter mfi(*Jx, TilingIfNotGPU()); mfi.isValid(); ++mfi )
     {
@@ -488,17 +482,17 @@ WarpX::ApplyInverseVolumeScalingToCurrentDensity (MultiFab* Jx, MultiFab* Jy, Mu
         Array4<Real> const& Jt_arr = Jy->array(mfi);
         Array4<Real> const& Jz_arr = Jz->array(mfi);
 
-        tilebox = mfi.tilebox();
-        Box tbr = convert(tilebox, WarpX::jx_nodal_flag);
-        Box tbt = convert(tilebox, WarpX::jy_nodal_flag);
-        Box tbz = convert(tilebox, WarpX::jz_nodal_flag);
+        Box const & tilebox = mfi.tilebox();
+        Box tbr = convert( tilebox, Jx->ixType().toIntVect() );
+        Box tbt = convert( tilebox, Jy->ixType().toIntVect() );
+        Box tbz = convert( tilebox, Jz->ixType().toIntVect() );
 
         // Lower corner of tile box physical domain
         // Note that this is done before the tilebox.grow so that
         // these do not include the guard cells.
         std::array<amrex::Real,3> galilean_shift = {0,0,0};
         const std::array<Real, 3>& xyzmin = WarpX::LowerCorner(tilebox, galilean_shift, lev);
-        const Real rmin  = xyzmin[0] + (tbr.type(0) == NODE ? 0. : 0.5*dx[0]);
+        const Real rmin  = xyzmin[0];
         const Real rminr = xyzmin[0] + (tbr.type(0) == NODE ? 0. : 0.5*dx[0]);
         const Real rmint = xyzmin[0] + (tbt.type(0) == NODE ? 0. : 0.5*dx[0]);
         const Real rminz = xyzmin[0] + (tbz.type(0) == NODE ? 0. : 0.5*dx[0]);
@@ -655,7 +649,7 @@ WarpX::ApplyInverseVolumeScalingToChargeDensity (MultiFab* Rho, int lev)
         Array4<Real> const& Rho_arr = Rho->array(mfi);
 
         tilebox = mfi.tilebox();
-        Box tb = convert(tilebox, rho_nodal_flag);
+        Box tb = convert( tilebox, Rho->ixType().toIntVect() );
 
         // Lower corner of tile box physical domain
         // Note that this is done before the tilebox.grow so that

@@ -1,6 +1,7 @@
 /* Copyright 2019-2020 Andrew Myers, Ann Almgren, Aurore Blelly
  * Axel Huebl, Burlen Loring, Maxence Thevenet
- * Remi Lehe, Revathi Jambunathan, Weiqun Zhang
+ * Michael Rowan, Remi Lehe, Revathi Jambunathan
+ * Weiqun Zhang
  *
  *
  * This file is part of WarpX.
@@ -81,14 +82,6 @@ WarpX::InitData ()
     if (restart_chkfile.empty())
     {
         multi_diags->FilterComputePackFlush( 0, true );
-        if (plot_int > 0)
-            WritePlotFile();
-
-        if (openpmd_int > 0)
-            WriteOpenPMDFile();
-
-        if (check_int > 0)
-            WriteCheckPointFile();
 
         if ((insitu_int > 0) && (insitu_start == 0))
             UpdateInSitu();
@@ -323,8 +316,10 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  Bxfield_parser.get(),
                                                  Byfield_parser.get(),
                                                  Bzfield_parser.get(),
-                                                 Bx_nodal_flag, By_nodal_flag,
-                                                 Bz_nodal_flag, lev);
+                                                 Bfield_fp[lev][0]->ixType().toIntVect(),
+                                                 Bfield_fp[lev][1]->ixType().toIntVect(),
+                                                 Bfield_fp[lev][2]->ixType().toIntVect(),
+                                                 lev);
        if (lev > 0) {
           InitializeExternalFieldsOnGridUsingParser(Bfield_aux[lev][0].get(),
                                                     Bfield_aux[lev][1].get(),
@@ -332,8 +327,10 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Bxfield_parser.get(),
                                                     Byfield_parser.get(),
                                                     Bzfield_parser.get(),
-                                                    Bx_nodal_flag, By_nodal_flag,
-                                                    Bz_nodal_flag, lev);
+                                                    Bfield_aux[lev][0]->ixType().toIntVect(),
+                                                    Bfield_aux[lev][1]->ixType().toIntVect(),
+                                                    Bfield_aux[lev][2]->ixType().toIntVect(),
+                                                    lev);
 
           InitializeExternalFieldsOnGridUsingParser(Bfield_cp[lev][0].get(),
                                                     Bfield_cp[lev][1].get(),
@@ -341,8 +338,10 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Bxfield_parser.get(),
                                                     Byfield_parser.get(),
                                                     Bzfield_parser.get(),
-                                                    Bx_nodal_flag, By_nodal_flag,
-                                                    Bz_nodal_flag, lev);
+                                                    Bfield_cp[lev][0]->ixType().toIntVect(),
+                                                    Bfield_cp[lev][1]->ixType().toIntVect(),
+                                                    Bfield_cp[lev][2]->ixType().toIntVect(),
+                                                    lev);
        }
     }
 
@@ -375,8 +374,10 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  Exfield_parser.get(),
                                                  Eyfield_parser.get(),
                                                  Ezfield_parser.get(),
-                                                 Ex_nodal_flag, Ey_nodal_flag,
-                                                 Ez_nodal_flag, lev);
+                                                 Efield_fp[lev][0]->ixType().toIntVect(),
+                                                 Efield_fp[lev][1]->ixType().toIntVect(),
+                                                 Efield_fp[lev][2]->ixType().toIntVect(),
+                                                 lev);
        if (lev > 0) {
           InitializeExternalFieldsOnGridUsingParser(Efield_aux[lev][0].get(),
                                                     Efield_aux[lev][1].get(),
@@ -384,8 +385,10 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Exfield_parser.get(),
                                                     Eyfield_parser.get(),
                                                     Ezfield_parser.get(),
-                                                    Ex_nodal_flag, Ey_nodal_flag,
-                                                    Ez_nodal_flag, lev);
+                                                    Efield_aux[lev][0]->ixType().toIntVect(),
+                                                    Efield_aux[lev][1]->ixType().toIntVect(),
+                                                    Efield_aux[lev][2]->ixType().toIntVect(),
+                                                    lev);
 
           InitializeExternalFieldsOnGridUsingParser(Efield_cp[lev][0].get(),
                                                     Efield_cp[lev][1].get(),
@@ -393,8 +396,10 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Exfield_parser.get(),
                                                     Eyfield_parser.get(),
                                                     Ezfield_parser.get(),
-                                                    Ex_nodal_flag, Ey_nodal_flag,
-                                                    Ez_nodal_flag, lev);
+                                                    Efield_cp[lev][0]->ixType().toIntVect(),
+                                                    Efield_cp[lev][1]->ixType().toIntVect(),
+                                                    Efield_cp[lev][2]->ixType().toIntVect(),
+                                                    lev);
        }
     }
 
@@ -414,53 +419,12 @@ WarpX::InitLevelData (int lev, Real /*time*/)
         rho_cp[lev]->setVal(0.0);
     }
 
-    if (WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers) {
-        if (costs[lev]) {
-            costs[lev]->setVal(0.0);
-        }
-    } else if (WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Heuristic) {
-        if (costs_heuristic[lev]) {
-            std::fill((*costs_heuristic[lev]).begin(),
-                      (*costs_heuristic[lev]).end(),
-                      0.0);
+    if (costs[lev]) {
+        for (int i : costs[lev]->IndexArray()) {
+            (*costs[lev])[i] = 0.0;
         }
     }
 }
-
-#ifdef WARPX_USE_PSATD_HYBRID
-
-void
-WarpX::InitLevelDataFFT (int lev, Real time)
-{
-
-    Efield_fp_fft[lev][0]->setVal(0.0);
-    Efield_fp_fft[lev][1]->setVal(0.0);
-    Efield_fp_fft[lev][2]->setVal(0.0);
-    Bfield_fp_fft[lev][0]->setVal(0.0);
-    Bfield_fp_fft[lev][1]->setVal(0.0);
-    Bfield_fp_fft[lev][2]->setVal(0.0);
-    current_fp_fft[lev][0]->setVal(0.0);
-    current_fp_fft[lev][1]->setVal(0.0);
-    current_fp_fft[lev][2]->setVal(0.0);
-    rho_fp_fft[lev]->setVal(0.0);
-
-    if (lev > 0)
-    {
-        Efield_cp_fft[lev][0]->setVal(0.0);
-        Efield_cp_fft[lev][1]->setVal(0.0);
-        Efield_cp_fft[lev][2]->setVal(0.0);
-        Bfield_cp_fft[lev][0]->setVal(0.0);
-        Bfield_cp_fft[lev][1]->setVal(0.0);
-        Bfield_cp_fft[lev][2]->setVal(0.0);
-        current_cp_fft[lev][0]->setVal(0.0);
-        current_cp_fft[lev][1]->setVal(0.0);
-        current_cp_fft[lev][2]->setVal(0.0);
-        rho_cp_fft[lev]->setVal(0.0);
-    }
-
-}
-
-#endif
 
 void
 WarpX::InitializeExternalFieldsOnGridUsingParser (
