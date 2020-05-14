@@ -5,14 +5,15 @@ OPENBC_HOME ?= ../openbc_poisson
 DEBUG = FALSE
 #DEBUG	= TRUE
 
-#DIM     = 2
-DIM = 3
+DIM     = 2
+#DIM = 3
 
 #QED	       = TRUE
 #QED_TABLE_GEN = TRUE
 
 COMP = gcc
-#COMP = intel
+#COMP = intel../
+
 #COMP = pgi
 
 TINY_PROFILE   = TRUE
@@ -20,8 +21,8 @@ TINY_PROFILE   = TRUE
 #COMM_PROFILE  = TRUE
 #TRACE_PROFILE = TRUE
 
-USE_OMP   = TRUE
-USE_GPU   = FALSE
+USE_OMP   = FALSE
+USE_GPU   = TRUE
 
 EBASE     = main
 
