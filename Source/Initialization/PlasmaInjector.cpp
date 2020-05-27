@@ -344,9 +344,18 @@ void PlasmaInjector::parseDensity (ParmParse& pp)
         inj_rho.reset(new InjectorDensity((InjectorDensityPredefined*)nullptr,species_name));
     } else if (rho_prof_s == "parse_density_function") {
         Store_parserString(pp, "density_function(x,y,z)", str_density_function);
+
+	Real cellSize;
+	bool cellCentered = true;
+
+	pp.query("cell_centered", cellCentered);
+	if (!pp.query("cell_size", cellSize)){
+	    amrex::Abort("You mnust enter a cell size with '<s_name>.cell_size =' !");
+	}
+	
         // Construct InjectorDensity with InjectorDensityParser.
         inj_rho.reset(new InjectorDensity((InjectorDensityParser*)nullptr,
-                                          makeParser(str_density_function,{"x","y","z"})));
+                                          makeParser(str_density_function,{"x","y","z"}), cellSize, cellCentered));
     } else {
         //No need for profile definition if external file is used
         std::string s_inj_style;

@@ -120,13 +120,13 @@ struct InjectorMomentumBoltzmann
         // Each value of sqrt(-log(x1))*sin(2*pi*x2) is a sample from a Boltzmann
         // distribution with sigma = average velocity / c
         // using the Box-Mueller Method.
-        u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*M_PI*x2); 
-        u[(dir+2)%3] = vave*std::sqrt(-std::log(x1)) *std::cos(2*M_PI*x2);
-        u[dir] = vave*std::sqrt(-std::log(amrex::Random()))*
-             std::sin(2*M_PI*amrex::Random());
-	// u[(dir+1)%3] = 0;
-        // u[(dir+2)%3] = 0;
-	// u[dir] = 0;
+        // u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*M_PI*x2); 
+        // u[(dir+2)%3] = vave*std::sqrt(-std::log(x1)) *std::cos(2*M_PI*x2);
+        // u[dir] = vave*std::sqrt(-std::log(amrex::Random()))*
+        //      std::sin(2*M_PI*amrex::Random());
+	u[(dir+1)%3] = 0;
+        u[(dir+2)%3] = 0;
+	u[dir] = 0;
         gamma = std::pow(u[0],2)+std::pow(u[1],2)+std::pow(u[2],2);
         gamma = std::sqrt(1+gamma);
         // The following condition is equtaion 32 in Zenitani 2015
@@ -151,7 +151,7 @@ struct InjectorMomentumBoltzmann
         u[dir] = 1/std::sqrt(1-pow(beta,2))*(u[dir]+gamma*beta);
         // Note that if beta = 0 then the flipping method and Lorentz transform
         // have no effect on the u[dir] direction.
-
+	
         return amrex::XDim3 {u[0],u[1],u[2]};
     }
 

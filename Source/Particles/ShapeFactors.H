@@ -53,6 +53,7 @@ int compute_shape_factor <1> (amrex::Real* const sx, amrex::Real xmid){
     return j;
 }
 
+
 /**
  *  Compute shape factor and return index of leftmost cell where
  *  particle writes.

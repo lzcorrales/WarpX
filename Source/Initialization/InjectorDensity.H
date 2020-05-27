@@ -34,18 +34,33 @@ private:
 // struct whose getDensity returns local density computed from parser.
 struct InjectorDensityParser
 {
-    InjectorDensityParser (WarpXParser const& a_parser) noexcept
-        : m_parser(a_parser) {}
+    InjectorDensityParser (WarpXParser const& a_parser, amrex::Real cs, bool cc) noexcept
+        : m_parser(a_parser), cellSize(cs), cellCentered(cc) {}
 
     AMREX_GPU_HOST_DEVICE
     amrex::Real
     getDensity (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
-        return m_parser(x,y,z);
+
+	amrex::Real x1;
+
+	if(cellCentered)
+	{
+	    x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
+	}
+	else
+	{
+	    x1 = x;
+	}
+	
+        return m_parser(x1,y,z);
     }
 
     // InjectorDensityParser constructs this GpuParser from WarpXParser.
     GpuParser<3> m_parser;
+private:
+    amrex::Real cellSize;
+    bool cellCentered;
 };
 
 // struct whose getDensity returns local density computed from predefined profile.
@@ -126,9 +141,9 @@ struct InjectorDensity
     { }
 
     // This constructor stores a InjectorDensityParser in union object.
-    InjectorDensity (InjectorDensityParser* t, WarpXParser const& a_parser)
+    InjectorDensity (InjectorDensityParser* t, WarpXParser const& a_parser, amrex::Real cs, bool cc)
         : type(Type::parser),
-          object(t,a_parser)
+          object(t,a_parser, cs, cc)
     { }
 
     // This constructor stores a InjectorDensityCustom in union object.
@@ -193,8 +208,8 @@ private:
     union Object {
         Object (InjectorDensityConstant*, amrex::Real a_rho) noexcept
             : constant(a_rho) {}
-        Object (InjectorDensityParser*, WarpXParser const& a_parser) noexcept
-            : parser(a_parser) {}
+        Object (InjectorDensityParser*, WarpXParser const& a_parser, amrex::Real cs, bool cc) noexcept
+            : parser(a_parser, cs, cc) {}
         Object (InjectorDensityCustom*, std::string const& a_species_name) noexcept
             : custom(a_species_name) {}
         Object (InjectorDensityPredefined*, std::string const& a_species_name) noexcept

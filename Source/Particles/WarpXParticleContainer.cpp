@@ -339,7 +339,13 @@ WarpXParticleContainer::DepositCurrent(WarpXParIter& pti,
                 WarpX::n_rz_azimuthal_modes);
         }
     } else {
-        if        (WarpX::nox == 1){
+	if (WarpX::nox == 0){
+            doDepositionShapeN<0>(
+                GetPosition, wp.dataPtr() + offset, uxp.dataPtr() + offset,
+                uyp.dataPtr() + offset, uzp.dataPtr() + offset, ion_lev,
+                jx_fab, jy_fab, jz_fab, np_to_depose, dt, dx,
+                xyzmin, lo, q, WarpX::n_rz_azimuthal_modes);
+	} else if (WarpX::nox == 1){
             doDepositionShapeN<1>(
                 GetPosition, wp.dataPtr() + offset, uxp.dataPtr() + offset,
                 uyp.dataPtr() + offset, uzp.dataPtr() + offset, ion_lev,
@@ -470,7 +476,11 @@ WarpXParticleContainer::DepositCharge (WarpXParIter& pti, RealVector& wp,
     const Dim3 lo = lbound(tilebox);
 
     WARPX_PROFILE_VAR_START(blp_ppc_chd);
-    if        (WarpX::nox == 1){
+    if (WarpX::nox == 0){
+        doChargeDepositionShapeN<0>(GetPosition, wp.dataPtr()+offset, ion_lev,
+                                    rho_fab, np_to_depose, dx, xyzmin, lo, q,
+                                    WarpX::n_rz_azimuthal_modes);
+    } else if (WarpX::nox == 1){
         doChargeDepositionShapeN<1>(GetPosition, wp.dataPtr()+offset, ion_lev,
                                     rho_fab, np_to_depose, dx, xyzmin, lo, q,
                                     WarpX::n_rz_azimuthal_modes);

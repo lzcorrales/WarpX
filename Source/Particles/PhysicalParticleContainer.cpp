@@ -2156,7 +2156,15 @@ PhysicalParticleContainer::FieldGather (WarpXParIter& pti,
                                 xyzmin, lo, WarpX::n_rz_azimuthal_modes);
         }
     } else {
-        if        (WarpX::nox == 1){
+	if (WarpX::nox == 0){
+            doGatherShapeN<0,0>(GetPosition,
+                                Exp.dataPtr() + offset, Eyp.dataPtr() + offset,
+                                Ezp.dataPtr() + offset, Bxp.dataPtr() + offset,
+                                Byp.dataPtr() + offset, Bzp.dataPtr() + offset,
+                                exfab, eyfab, ezfab, bxfab, byfab, bzfab,
+                                np_to_gather, dx,
+                                xyzmin, lo, WarpX::n_rz_azimuthal_modes);
+	} else if (WarpX::nox == 1){
             doGatherShapeN<1,0>(GetPosition,
                                 Exp.dataPtr() + offset, Eyp.dataPtr() + offset,
                                 Ezp.dataPtr() + offset, Bxp.dataPtr() + offset,
