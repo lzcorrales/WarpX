@@ -96,7 +96,7 @@ struct InjectorMomentumBoltzmann
 	if(cellCentered)
 	{
 	    // x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
-	    x1 = (std::trunc(x*1/cellSize+0.5))*cellSize;
+	    x1 = (std::trunc(x*1/cellSize+0.5*x/std::abs(x)))*cellSize;
 	}
 	else
 	{
