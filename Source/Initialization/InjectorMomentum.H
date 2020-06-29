@@ -121,13 +121,13 @@ struct InjectorMomentumBoltzmann
         // Each value of sqrt(-log(x1))*sin(2*pi*x2) is a sample from a Boltzmann
         // distribution with sigma = average velocity / c
         // using the Box-Mueller Method.
-        // u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*M_PI*x2); 
-        // u[(dir+2)%3] = vave*std::sqrt(-std::log(x1)) *std::cos(2*M_PI*x2);
-        // u[dir] = vave*std::sqrt(-std::log(amrex::Random()))*
-        //      std::sin(2*M_PI*amrex::Random());
-	u[(dir+1)%3] = 0;
-        u[(dir+2)%3] = 0;
-	u[dir] = 0;
+        u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*M_PI*x2); 
+        u[(dir+2)%3] = vave*std::sqrt(-std::log(x1)) *std::cos(2*M_PI*x2);
+        u[dir] = vave*std::sqrt(-std::log(amrex::Random()))*
+             std::sin(2*M_PI*amrex::Random());
+	// u[(dir+1)%3] = 0;
+        // u[(dir+2)%3] = 0;
+	// u[dir] = 0;
         gamma = std::pow(u[0],2)+std::pow(u[1],2)+std::pow(u[2],2);
         gamma = std::sqrt(1+gamma);
         // The following condition is equtaion 32 in Zenitani 2015
