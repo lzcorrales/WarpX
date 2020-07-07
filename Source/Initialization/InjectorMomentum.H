@@ -198,21 +198,26 @@ struct InjectorMomentumJuttner
         amrex::Real u [3];
 	if(cellCentered)
 	{
-	    x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
+	    // x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
+	    x1 = (std::trunc(x*1/cellSize+0.5*x/std::abs(x)))*cellSize;
 	}
 	else
 	{
 	    x1 = x;
 	}
 	beta = -1 * beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ),-1) - std::pow(std::cosh( (x1 - xcs) / delta ),-1));
-	theta = sigma/4. * ( 51./50. - std::pow( -1. - std::tanh((x1 - xcs) / delta) + std::tanh((x1 + xcs) / delta) , 2 ) ) /
-	    ( ( 1. + 4.*( std::pow( std::cosh((x1 + xcs) / delta), -1 )  + std::pow( std::cosh((x1 - xcs) / delta), -1 ) ) ) *
-	      std::pow( 1. - std::pow(beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ), -1 ) - std::pow(std::cosh( (x1 - xcs) / delta ), -1 ) ), 2 ), 0.5 ) );
+	theta = sigma/4. * (51./50.
+			    - std::pow( - ( 2./(M_PI/2.+5.-1.) ) * (std::atan(std::tanh((x1+xcs)/2./delta)) - std::atan(std::tanh((x1-xcs)/2./delta)) - M_PI/4.
+								+ (5. - 1.) / 2. * (std::tanh((x1+xcs)/delta) - std::tanh((x1-xcs)/delta) - 1.)) , 2 ))
+	    /( ( 1. + 4.*( std::pow( std::cosh((x1 + xcs) / delta), -1 )  + std::pow( std::cosh((x1 - xcs) / delta), -1 ) ) )
+	       * std::pow( 1. - std::pow(beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ), -1 ) - std::pow(std::cosh( (x1 - xcs) / delta ), -1 ) ), 2), 0.5 )
+		);
         x1 = 0.;
         gamma = 0.;
         u[dir] = 0.;
         // This condition is equation 10 in Zenitani,
         // though x1 is defined differently.
+
         while(u[dir]-gamma <= x1)
         {
             u[dir] = -theta*
@@ -230,6 +235,10 @@ struct InjectorMomentumJuttner
         u[(dir+2)%3] = 2*u[dir]*std::sqrt(x1*(1-x1))*std::cos(2*M_PI*x2);
         // The value of dir is the boost direction to be transformed.
         u[dir] = u[dir]*(2*x1-1);
+	// u[(dir+1)%3] = 0;
+	// u[(dir+2)%3] = 0;
+	// u[dir] = 0;
+	gamma = std::sqrt(1+std::pow(u[dir],2));
         x1 = amrex::Random();
         // The following condition is equtaion 32 in Zenitani, called
         // The flipping method. It transforms the intergral: d3x' -> d3x
@@ -246,11 +255,11 @@ struct InjectorMomentumJuttner
         if(-beta*u[dir]/gamma>x1)
         {
             u[dir] = -u[dir];
-
         }
         // This Lorentz transform is equation 17 in Zenitani.
         // It transforms the integral d3u' -> d3u
         // where d3u' is the volume element for momentum in the boosted frame.
+	// beta = theta;
         u[dir] = 1/std::sqrt(1-pow(beta,2))*(u[dir]+gamma*beta);
         // Note that if beta = 0 then the flipping method and Lorentz transform
         // have no effect on the u[dir] direction.
