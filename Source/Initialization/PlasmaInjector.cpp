@@ -561,6 +561,7 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
 	}
 	if(!b){
 	    beta = std::sqrt(1.0/nbnd * sigma) * lambdae/(2.0 * delta)/(M_PI/2.0 + 5.0-1.0);
+	    Print() << "Beta " << beta << "\n";
 	}
 	else if(!s){
 	    sigma = 4.0*std::pow(delta, 2)*std::pow(beta, 2)*std::pow(M_PI/2.0 + 5.0-1.0,2)/(1.0/nbnd * std::pow(lambdae, 2));
