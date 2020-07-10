@@ -194,7 +194,7 @@ struct InjectorMomentumJuttner
     {
         // Sobol method for sampling MJ Speeds,
         // from Zenitani 2015 (Phys. Plasmas 22, 042116).
-        amrex::Real x1, x2, gamma, theta, beta;
+        amrex::Real x1, x2, gamma, theta, beta, A, B, C;
         amrex::Real u [3];
 	if(cellCentered)
 	{
@@ -222,23 +222,25 @@ struct InjectorMomentumJuttner
         {
             u[dir] = -theta*
                 std::log(amrex::Random()*amrex::Random()*amrex::Random());
-            gamma = std::sqrt(1+std::pow(u[dir],2));
+            gamma = std::sqrt(1.0+std::pow(u[dir],2));
             x1 = theta*std::log(amrex::Random());
         }
         // The following code samples a random unit vector
         // and multiplies the result by speed u[dir].
         x1 = amrex::Random();
         x2 = amrex::Random();
+	B = 2.0 * x1 - 1.0;
+	A = std::sqrt(1.0-B*B);
+	C = x2 * 2.0 * M_PI;
         // Direction dir is an input parameter that sets the boost direction:
         // 'x' -> d = 0, 'y' -> d = 1, 'z' -> d = 2.
-        u[(dir+1)%3] = 2*u[dir]*std::sqrt(x1*(1-x1))*std::sin(2*M_PI*x2);
-        u[(dir+2)%3] = 2*u[dir]*std::sqrt(x1*(1-x1))*std::cos(2*M_PI*x2);
+        u[(dir+1)%3] = u[dir]*A*std::sin(C);
+	u[(dir+2)%3] = u[dir]*A*std::cos(C);
         // The value of dir is the boost direction to be transformed.
-        u[dir] = u[dir]*(2*x1-1);
+        u[dir] = u[dir]*B;	
 	// u[(dir+1)%3] = 0;
 	// u[(dir+2)%3] = 0;
 	// u[dir] = 0;
-	gamma = std::sqrt(1+std::pow(u[dir],2));
         x1 = amrex::Random();
         // The following condition is equtaion 32 in Zenitani, called
         // The flipping method. It transforms the intergral: d3x' -> d3x
