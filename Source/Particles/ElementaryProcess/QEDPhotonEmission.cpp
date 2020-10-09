@@ -12,7 +12,7 @@
 PhotonEmissionTransformFunc::
 PhotonEmissionTransformFunc (QuantumSynchrotronGetOpticalDepth opt_depth_functor,
                              int const opt_depth_runtime_comp,
-                             QuantumSynchrotronGeneratePhotonAndUpdateMomentum const emission_functor,
+                             QuantumSynchrotronPhotonEmission const emission_functor,
                              const WarpXParIter& a_pti, int lev, int ngE,
                              amrex::FArrayBox const& exfab,
                              amrex::FArrayBox const& eyfab,
@@ -58,7 +58,7 @@ PhotonEmissionTransformFunc (QuantumSynchrotronGetOpticalDepth opt_depth_functor
     const std::array<amrex::Real, 3>& xyzmin = WarpX::LowerCorner(box, galilean_shift, lev);
     m_xyzmin_arr = {xyzmin[0], xyzmin[1], xyzmin[2]};
 
-    m_l_lower_order_in_v = WarpX::l_lower_order_in_v;
+    m_galerkin_interpolation = WarpX::galerkin_interpolation;
     m_nox = WarpX::nox;
     m_n_rz_azimuthal_modes = WarpX::n_rz_azimuthal_modes;
 

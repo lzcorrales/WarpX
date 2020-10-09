@@ -122,7 +122,14 @@ public:
                             const amrex::MultiFab& Ex, const amrex::MultiFab& Ey, const amrex::MultiFab& Ez,
                             const amrex::MultiFab& Bx, const amrex::MultiFab& By, const amrex::MultiFab& Bz);
 
-    void doCoulombCollisions ();
+    void doCoulombCollisions (amrex::Real cur_time);
+
+    /**
+    * \brief This function loops over all species and performs resampling if appropriate.
+    *
+    * @param[in] timestep the current timestep.
+    */
+    void doResampling (const int timestep);
 
 #ifdef WARPX_QED
     /** If Schwinger process is activated, this function is called at every
@@ -134,10 +141,6 @@ public:
      */
     void doQEDSchwinger ();
 #endif
-
-    void Checkpoint (const std::string& dir) const;
-
-    void WritePlotFile (const std::string& dir) const;
 
     void Restart (const std::string& dir);
 
@@ -153,6 +156,10 @@ public:
 
     void RedistributeLocal (const int num_ghost);
 
+    /** Apply BC. For now, just discard particles outside the domain, regardless
+     *  of the whole simulation BC. */
+    void ApplyBoundaryConditions ();
+
     amrex::Vector<long> NumberOfParticlesInGrid(int lev) const;
 
     void Increment (amrex::MultiFab& mf, int lev);
@@ -160,7 +167,7 @@ public:
     void SetParticleBoxArray (int lev, amrex::BoxArray& new_ba);
     void SetParticleDistributionMap (int lev, amrex::DistributionMapping& new_dm);
 
-    int nSpecies() const {return nspecies;}
+    int nSpecies() const {return species_names.size();}
 
     int nSpeciesBackTransformedDiagnostics() const {return nspecies_back_transformed_diagnostics;}
     int mapSpeciesBackTransformedDiagnostics(int i) const {return map_species_back_transformed_diagnostics[i];}
@@ -270,6 +277,9 @@ protected:
 
     std::vector<PCTypes> species_types;
 
+    /** Whether to absorb particles exiting the domain */
+    ParticleBC m_boundary_conditions = ParticleBC::none;
+
     template<typename ...Args>
     amrex::MFItInfo getMFItInfo (const WarpXParticleContainer& pc_src,
                                  Args const&... pc_dsts) const noexcept
@@ -307,9 +317,13 @@ protected:
     int m_nspecies_breit_wheeler = 0;
     //________
 
+    static constexpr auto m_default_quantum_sync_photon_creation_energy_threshold =
+        static_cast<amrex::ParticleReal>(
+        2.0 * PhysConst::m_e * PhysConst::c * PhysConst::c );  /*!< Default value of the energy threshold for photon creation in Quantum Synchrotron process.*/
+
+
     amrex::ParticleReal m_quantum_sync_photon_creation_energy_threshold =
-      static_cast<amrex::ParticleReal>(
-        2.0 * PhysConst::m_e * PhysConst::c * PhysConst::c );  /*!< Energy threshold for photon creation in Quantum Synchrotron process.*/
+        m_default_quantum_sync_photon_creation_energy_threshold; /*!< Energy threshold for photon creation in Quantum Synchrotron process.*/
 
     /**
      * Returns the number of species having Quantum Synchrotron process enabled
@@ -381,12 +395,7 @@ private:
     std::vector<int> map_species_back_transformed_diagnostics;
     int do_back_transformed_diagnostics = 0;
 
-    // runtime parameters
-    int nlasers = 0;
-    int nspecies = 1;   // physical particles only. nspecies+nlasers == allcontainers.size().
-    int ncollisions = 0;
-
-    void MFItInfoCheckTiling(const WarpXParticleContainer& pc_src) const noexcept
+    void MFItInfoCheckTiling(const WarpXParticleContainer& /*pc_src*/) const noexcept
     {
         return;
     }

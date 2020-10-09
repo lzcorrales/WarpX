@@ -64,9 +64,11 @@ class Species(picmistandard.PICMI_Species):
                 if self.mass is None:
                     self.mass = element.mass*periodictable.constants.atomic_mass_constant
 
-    def initialize_inputs(self, layout, initialize_self_fields=False):
-        self.species_number = pywarpx.particles.nspecies
-        pywarpx.particles.nspecies += 1
+    def initialize_inputs(self, layout,
+                          initialize_self_fields = False,
+                          injection_plane_position = None,
+                          injection_plane_normal_vector = None):
+        self.species_number = len(pywarpx.particles.species_names)
 
         if self.name is None:
             self.name = 'species{}'.format(self.species_number)
@@ -82,6 +84,14 @@ class Species(picmistandard.PICMI_Species):
 
         if self.initial_distribution is not None:
             self.initial_distribution.initialize_inputs(self.species_number, layout, self.species, self.density_scale)
+
+        if injection_plane_position is not None:
+            if injection_plane_normal_vector is not None:
+                assert injection_plane_normal_vector[0] == 0. and injection_plane_normal_vector[1] == 0.,\
+                    Exception('Rigid injection can only be done along z')
+            pywarpx.particles.rigid_injected_species.append(self.name)
+            self.species.rigid_advance = 1
+            self.species.zinject_plane = injection_plane_position
 
         for interaction in self.interactions:
             assert interaction[0] == 'ionization'
@@ -271,7 +281,7 @@ class AnalyticDistribution(picmistandard.PICMI_AnalyticDistribution):
 class ParticleListDistribution(picmistandard.PICMI_ParticleListDistribution):
     def init(self, kw):
 
-        if len(x) > 1:
+        if len(self.x) > 1:
             raise Exception('Only a single particle can be loaded')
 
     def initialize_inputs(self, species_number, layout, species, density_scale):
@@ -304,8 +314,15 @@ class PseudoRandomLayout(picmistandard.PICMI_PseudoRandomLayout):
 
 
 class BinomialSmoother(picmistandard.PICMI_BinomialSmoother):
+
     def initialize_inputs(self, solver):
-        pywarpx.warpx.use_filter = 1
+        use_spectral = solver.method == 'PSATD' and isinstance(solver.grid, picmistandard.PICMI_CylindricalGrid)
+        if use_spectral:
+            pywarpx.warpx.use_kspace_filter = 1
+            if self.compensation is not None:
+                pywarpx.warpx.use_filter_compensation = self.compensation[0] and self.compensation[1]
+        else:
+            pywarpx.warpx.use_filter = 1
         if self.n_pass is None:
             # If not specified, do at least one pass in each direction.
             self.n_pass = 1
@@ -451,9 +468,12 @@ class ElectromagneticSolver(picmistandard.PICMI_ElectromagneticSolver):
         self.pml_ncell = kw.pop('warpx_pml_ncell', None)
 
         if self.method == 'PSATD':
-            self.periodic_single_box_fft = kw.pop('warpx_periodic_single_box_fft', None)
-            self.fftw_plan_measure = kw.pop('warpx_fftw_plan_measure', None)
-            self.current_correction = kw.pop('warpx_current_correction', None)
+            self.psatd_periodic_single_box_fft = kw.pop('warpx_periodic_single_box_fft', None)
+            self.psatd_fftw_plan_measure = kw.pop('warpx_fftw_plan_measure', None)
+            self.psatd_current_correction = kw.pop('warpx_current_correction', None)
+            self.psatd_update_with_rho = kw.pop('warpx_psatd_update_with_rho', None)
+            self.psatd_do_time_averaging = kw.pop('warpx_psatd_do_time_averaging', None)
+            self.psatd_use_damp_fields_in_z_guard = kw.pop('warpx_use_damp_fields_in_z_guard', None)
 
     def initialize_inputs(self):
 
@@ -464,21 +484,33 @@ class ElectromagneticSolver(picmistandard.PICMI_ElectromagneticSolver):
         pywarpx.warpx.do_nodal = self.l_nodal
 
         if self.method == 'PSATD':
-            pywarpx.psatd.periodic_single_box_fft = self.periodic_single_box_fft
-            pywarpx.psatd.fftw_plan_measure = self.fftw_plan_measure
-            pywarpx.psatd.current_correction = self.current_correction
+            pywarpx.psatd.periodic_single_box_fft = self.psatd_periodic_single_box_fft
+            pywarpx.psatd.fftw_plan_measure = self.psatd_fftw_plan_measure
+            pywarpx.psatd.current_correction = self.psatd_current_correction
+            pywarpx.psatd.update_with_rho = self.psatd_update_with_rho
+            pywarpx.psatd.do_time_averaging = self.psatd_do_time_averaging
+            pywarpx.psatd.use_damp_fields_in_z_guard = self.psatd_use_damp_fields_in_z_guard
+
+            if self.grid.guard_cells is not None:
+                pywarpx.psatd.nx_guard = self.grid.guard_cells[0]
+                if self.grid.number_of_dimensions == 3:
+                    pywarpx.psatd.ny_guard = self.grid.guard_cells[1]
+                pywarpx.psatd.nz_guard = self.grid.guard_cells[-1]
 
             if self.stencil_order is not None:
                 pywarpx.psatd.nox = self.stencil_order[0]
-                pywarpx.psatd.noy = self.stencil_order[1]
-                pywarpx.psatd.noz = self.stencil_order[2]
+                if self.grid.number_of_dimensions == 3:
+                    pywarpx.psatd.noy = self.stencil_order[1]
+                pywarpx.psatd.noz = self.stencil_order[-1]
 
             if self.galilean_velocity is not None:
+                if self.grid.number_of_dimensions == 2:
+                    self.galilean_velocity = [self.galilean_velocity[0], 0., self.galilean_velocity[1]]
                 pywarpx.psatd.v_galilean = np.array(self.galilean_velocity)/constants.c
 
         else:
             # --- Same method names are used, though mapped to lower case.
-            pywarpx.algo.maxwell_fdtd_solver = self.method
+            pywarpx.algo.maxwell_solver = self.method
 
         if self.cfl is not None:
             pywarpx.warpx.cfl = self.cfl
@@ -494,7 +526,7 @@ class ElectrostaticSolver(picmistandard.PICMI_ElectrostaticSolver):
 
 class GaussianLaser(picmistandard.PICMI_GaussianLaser):
     def initialize_inputs(self):
-        self.laser_number = pywarpx.lasers.nlasers + 1
+        self.laser_number = len(pywarpx.lasers.names) + 1
         if self.name is None:
             self.name = 'laser{}'.format(self.laser_number)
 
@@ -509,11 +541,13 @@ class GaussianLaser(picmistandard.PICMI_GaussianLaser):
         self.laser.zeta = self.zeta
         self.laser.beta = self.beta
         self.laser.phi2 = self.phi2
+        self.laser.phi0 = self.phi0
 
+        self.laser.do_continuous_injection = self.fill_in
 
 class AnalyticLaser(picmistandard.PICMI_AnalyticLaser):
     def initialize_inputs(self):
-        self.laser_number = pywarpx.lasers.nlasers + 1
+        self.laser_number = len(pywarpx.lasers.names) + 1
         if self.name is None:
             self.name = 'laser{}'.format(self.laser_number)
 
@@ -525,9 +559,10 @@ class AnalyticLaser(picmistandard.PICMI_AnalyticLaser):
         self.laser.polarization = self.polarization_direction  # The main polarization vector
         self.laser.__setattr__('field_function(X,Y,t)', self.field_expression)
 
+        self.laser.do_continuous_injection = self.fill_in
+
         for k,v in self.user_defined_kw.items():
             setattr(pywarpx.my_constants, k, v)
-
 
 class LaserAntenna(picmistandard.PICMI_LaserAntenna):
     def initialize_inputs(self, laser):
@@ -536,6 +571,62 @@ class LaserAntenna(picmistandard.PICMI_LaserAntenna):
         if isinstance(laser, GaussianLaser):
             laser.laser.profile_focal_distance = laser.focal_position[2] - self.position[2]  # Focal distance from the antenna (in meters)
             laser.laser.profile_t_peak = (self.position[2] - laser.centroid_position[2])/constants.c  # The time at which the laser reaches its peak (in seconds)
+
+
+class ConstantAppliedField(picmistandard.PICMI_ConstantAppliedField):
+    def initialize_inputs(self):
+        # Note that lower and upper_bound are not used by WarpX
+
+        if (self.Ex is not None or
+            self.Ey is not None or
+            self.Ez is not None):
+            pywarpx.particles.E_ext_particle_init_style = 'constant'
+            pywarpx.particles.E_external_particle = [self.Ex or 0., self.Ey or 0., self.Ez or 0.]
+
+        if (self.Bx is not None or
+            self.By is not None or
+            self.Bz is not None):
+            pywarpx.particles.B_ext_particle_init_style = 'constant'
+            pywarpx.particles.B_external_particle = [self.Bx or 0., self.By or 0., self.Bz or 0.]
+
+
+class AnalyticAppliedField(picmistandard.PICMI_AnalyticAppliedField):
+    def initialize_inputs(self):
+        # Note that lower and upper_bound are not used by WarpX
+        for k,v in self.user_defined_kw.items():
+            setattr(pywarpx.my_constants, k, v)
+
+        if (self.Ex_expression is not None or
+            self.Ey_expression is not None or
+            self.Ez_expression is not None):
+            pywarpx.particles.E_ext_particle_init_style = 'parse_e_ext_particle_function'
+            pywarpx.particles.__setattr__('Ex_external_particle_function(x,y,z,t)', self.Ex_expression)
+            pywarpx.particles.__setattr__('Ey_external_particle_function(x,y,z,t)', self.Ey_expression)
+            pywarpx.particles.__setattr__('Ez_external_particle_function(x,y,z,t)', self.Ez_expression)
+
+        if (self.Bx_expression is not None or
+            self.By_expression is not None or
+            self.Bz_expression is not None):
+            pywarpx.particles.B_ext_particle_init_style = 'parse_b_ext_particle_function'
+            pywarpx.particles.__setattr__('Bx_external_particle_function(x,y,z,t)', self.Bx_expression)
+            pywarpx.particles.__setattr__('By_external_particle_function(x,y,z,t)', self.By_expression)
+            pywarpx.particles.__setattr__('Bz_external_particle_function(x,y,z,t)', self.Bz_expression)
+
+
+class Mirror(picmistandard.PICMI_Mirror):
+    def initialize_inputs(self):
+        try:
+            pywarpx.warpx.num_mirrors
+        except AttributeError:
+            pywarpx.warpx.num_mirrors = 0
+            pywarpx.warpx.mirror_z = []
+            pywarpx.warpx.mirror_z_width = []
+            pywarpx.warpx.mirror_z_npoints = []
+
+        pywarpx.warpx.num_mirrors += 1
+        pywarpx.warpx.mirror_z.append(self.z_front_location)
+        pywarpx.warpx.mirror_z_width.append(self.depth)
+        pywarpx.warpx.mirror_z_npoints.append(self.number_of_cells)
 
 
 class Simulation(picmistandard.PICMI_Simulation):
@@ -602,11 +693,17 @@ class Simulation(picmistandard.PICMI_Simulation):
         self.solver.initialize_inputs()
 
         for i in range(len(self.species)):
-            self.species[i].initialize_inputs(self.layouts[i], self.initialize_self_fields[i])
+            self.species[i].initialize_inputs(self.layouts[i],
+                                              self.initialize_self_fields[i],
+                                              self.injection_plane_positions[i],
+                                              self.injection_plane_normal_vectors[i])
 
         for i in range(len(self.lasers)):
             self.lasers[i].initialize_inputs()
             self.laser_injection_methods[i].initialize_inputs(self.lasers[i])
+
+        for applied_field in self.applied_fields:
+            applied_field.initialize_inputs()
 
         for diagnostic in self.diagnostics:
             diagnostic.initialize_inputs()

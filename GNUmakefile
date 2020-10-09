@@ -5,8 +5,11 @@ OPENBC_HOME ?= ../openbc_poisson
 DEBUG = FALSE
 #DEBUG	= TRUE
 
-DIM     = 2
-#DIM = 3
+WARN_ALL = TRUE
+#WARN_ERROR=TRUE
+
+#DIM     = 2
+DIM = 3
 
 #QED	       = TRUE
 #QED_TABLE_GEN = TRUE

@@ -30,7 +30,6 @@ AvgGalileanAlgorithm::AvgGalileanAlgorithm(const SpectralKSpace& spectral_kspace
     Psi2_coef = SpectralComplexCoefficients(ba, dm, 1, 0);
     Psi3_coef = SpectralComplexCoefficients(ba, dm, 1, 0);
 
-
     X1_coef = SpectralComplexCoefficients(ba, dm, 1, 0);
     X2_coef = SpectralComplexCoefficients(ba, dm, 1, 0);
     X3_coef = SpectralComplexCoefficients(ba, dm, 1, 0);
@@ -91,9 +90,10 @@ void AvgGalileanAlgorithm::InitializeSpectralCoefficients(
         Array4<Complex> CRhonew = Rhonew_coef[mfi].array();
         Array4<Complex> Jcoef   = Jcoef_coef[mfi].array();
         // Extract reals (for portability on GPU)
-
         Real vx = v_galilean[0];
+#if (AMREX_SPACEDIM==3)
         Real vy = v_galilean[1];
+#endif
         Real vz = v_galilean[2];
 
         // Loop over indices within one box
@@ -225,7 +225,7 @@ void AvgGalileanAlgorithm::InitializeSpectralCoefficients(
 
         });
     }
-};
+}
 
 /* Advance the E and B field in spectral space (stored in `f`)
  * over one time step */
@@ -249,15 +249,8 @@ AvgGalileanAlgorithm::pushSpectralFields(SpectralFieldData& f) const{
         Array4<const Complex> Theta2_arr = Theta2_coef[mfi].array();
         Array4<const Complex> Psi1_arr = Psi1_coef[mfi].array();
         Array4<const Complex> Psi2_arr = Psi2_coef[mfi].array();
-        Array4<const Complex> Psi3_arr = Psi3_coef[mfi].array();
-        Array4<const Real> C1_arr = C1_coef[mfi].array();
-        Array4<const Real> S1_arr = S1_coef[mfi].array();
-        Array4<const Real> C3_arr = C3_coef[mfi].array();
-        Array4<const Real> S3_arr = S3_coef[mfi].array();
-
 
         Array4<const Complex> A1_arr = A1_coef[mfi].array();
-        Array4<const Complex> A2_arr = A2_coef[mfi].array();
         Array4<const Complex> Rhonew_arr = Rhonew_coef[mfi].array();
         Array4<const Complex> Rhoold_arr = Rhoold_coef[mfi].array();
         Array4<const Complex> Jcoef_arr =Jcoef_coef[mfi].array();
@@ -289,12 +282,6 @@ AvgGalileanAlgorithm::pushSpectralFields(SpectralFieldData& f) const{
             const Complex rho_old = fields(i,j,k,Idx::rho_old);
             const Complex rho_new = fields(i,j,k,Idx::rho_new);
 
-            const Complex Ex_avg = fields(i,j,k,Idx::Ex_avg);
-            const Complex Ey_avg= fields(i,j,k,Idx::Ey_avg);
-            const Complex Ez_avg = fields(i,j,k,Idx::Ez_avg);
-            const Complex Bx_avg = fields(i,j,k,Idx::Bx_avg);
-            const Complex By_avg = fields(i,j,k,Idx::By_avg);
-            const Complex Bz_avg = fields(i,j,k,Idx::Bz_avg);
             // k vector values, and coefficients
             const Real kx = modified_kx_arr[i];
 
@@ -305,18 +292,12 @@ AvgGalileanAlgorithm::pushSpectralFields(SpectralFieldData& f) const{
             constexpr Real ky = 0;
             const Real kz = modified_kz_arr[j];
 #endif
-            constexpr Real c = PhysConst::c;
             constexpr Real c2 = PhysConst::c*PhysConst::c;
             constexpr Real inv_ep0 = 1._rt/PhysConst::ep0;
             constexpr Complex I = Complex{0,1};
 
             const Real C = C_arr(i,j,k);
             const Real S_ck = S_ck_arr(i,j,k);
-
-            const Real C1 = C1_arr(i,j,k);
-            const Real C3 = C3_arr(i,j,k);
-            const Real S1 = S1_arr(i,j,k);
-            const Real S3 = S3_arr(i,j,k);
 
             const Complex X1 = X1_arr(i,j,k);
             const Complex X2 = X2_arr(i,j,k);
@@ -326,13 +307,10 @@ AvgGalileanAlgorithm::pushSpectralFields(SpectralFieldData& f) const{
 
             const Complex Psi1 = Psi1_arr(i,j,k);
             const Complex Psi2 = Psi2_arr(i,j,k);
-            const Complex Psi3 = Psi3_arr(i,j,k);
             const Complex A1 = A1_arr(i,j,k);
-            const Complex A2 = A2_arr(i,j,k);
             const Complex CRhoold= Rhoold_arr(i,j,k);
             const Complex CRhonew= Rhonew_arr(i,j,k);
             const Complex Jcoef = Jcoef_arr(i,j,k);
-
 
             //Update E (see the original Galilean article)
             fields(i,j,k,Idx::Ex) = T2*C*Ex_old
@@ -344,6 +322,7 @@ AvgGalileanAlgorithm::pushSpectralFields(SpectralFieldData& f) const{
             fields(i,j,k,Idx::Ez) = T2*C*Ez_old
                         + T2*S_ck*c2*I*(kx*By_old - ky*Bx_old)
                         + X4*Jz - I*(X2*rho_new - T2*X3*rho_old)*kz;
+
             // Update B (see the original Galilean article)
             // Note: here X1 is T2*x1/(ep0*c*c*k_norm*k_norm), where
             // x1 has the same definition as in the original paper
@@ -357,7 +336,7 @@ AvgGalileanAlgorithm::pushSpectralFields(SpectralFieldData& f) const{
                         - T2*S_ck*I*(kx*Ey_old - ky*Ex_old)
                         +      X1*I*(kx*Jy     - ky*Jx);
 
-//Update the averaged E,B fields in time on the interval [(n-1/2)dx, (n+1/2)dx]
+            //Update the averaged E,B fields in time on the interval [(n-1/2)dx, (n+1/2)dx]
             fields(i,j,k,Idx::Ex_avg) = Psi1*Ex_old
                           - Psi2*c2*I*(ky*Bz_old - kz*By_old)
                           + Jcoef*Jx + ( CRhonew * rho_new +  CRhoold*rho_old )*kx;
@@ -379,4 +358,19 @@ AvgGalileanAlgorithm::pushSpectralFields(SpectralFieldData& f) const{
                           + A1*I*(kx*Jy     - ky*Jx)*inv_ep0;
                         });
     }
-};
+}
+
+void
+AvgGalileanAlgorithm::CurrentCorrection (SpectralFieldData& /*field_data*/,
+                                         std::array<std::unique_ptr<amrex::MultiFab>,3>& /*current*/,
+                                         const std::unique_ptr<amrex::MultiFab>& /*rho*/)
+{
+    amrex::Abort("Current correction not implemented for averaged Galilean PSATD");
+}
+
+void
+AvgGalileanAlgorithm::VayDeposition (SpectralFieldData& /*field_data*/,
+                                     std::array<std::unique_ptr<amrex::MultiFab>,3>& /*current*/)
+{
+    amrex::Abort("Vay deposition not implemented for averaged Galilean PSATD");
+}

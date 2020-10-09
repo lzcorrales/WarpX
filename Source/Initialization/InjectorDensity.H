@@ -1,4 +1,5 @@
 /* Copyright 2019 Axel Huebl, Maxence Thevenet, Weiqun Zhang
+ * Michael Rowan
  *
  *
  * This file is part of WarpX.
@@ -81,14 +82,20 @@ struct InjectorDensityPredefined
         {
         case Profile::parabolic_channel:
         {
-            amrex::Real z_start   = p[0];
-            amrex::Real ramp_up   = p[1];
-            amrex::Real plateau   = p[2];
-            amrex::Real ramp_down = p[3];
-            amrex::Real rc        = p[4];
-            amrex::Real n0        = p[5];
-            amrex::Real n;
-            amrex::Real kp = PhysConst::q_e/PhysConst::c
+            // These are cast as double to ensure sufficient precision in the
+            // initialized profile density profile; without these, single and
+            // double precision versions of the executable can show disagreement
+            // From testing, it seems that (for at least some setups), it is only
+            // necessary to case n0 as double to get good agreement between single
+            // and double precision, but just in case, all are cast as double.
+            double z_start   = p[0];
+            double ramp_up   = p[1];
+            double plateau   = p[2];
+            double ramp_down = p[3];
+            double rc        = p[4];
+            double n0        = p[5];
+            double n;
+            double kp = PhysConst::q_e/PhysConst::c
                 *std::sqrt( n0/(PhysConst::m_e*PhysConst::ep0) );
 
             // Longitudinal profile, normalized to 1
@@ -117,7 +124,7 @@ struct InjectorDensityPredefined
 private:
     enum struct Profile { null, parabolic_channel };
     Profile profile;
-    amrex::Real* p;
+    amrex::GpuArray<amrex::Real,6> p;
 };
 
 // Base struct for density injector.
@@ -128,12 +135,8 @@ private:
 // - InjectorDensityCustom    : to generate density from custom profile;
 // - InjectorDensityPredefined: to generate density from predefined profile;
 // The choice is made at runtime, depending in the constructor called.
-// This mimics virtual functions, except the struct is stored in managed memory
-// and member functions are made __host__ __device__ to run on CPU and GPU.
-// This struct inherits from amrex::Gpu::Managed to provide new and delete
-// operators in managed memory when running on GPU. Nothing special on CPU.
+// This mimics virtual functions.
 struct InjectorDensity
-    : public amrex::Gpu::Managed
 {
     // This constructor stores a InjectorDensityConstant in union object.
     InjectorDensity (InjectorDensityConstant* t, amrex::Real a_rho)
@@ -166,7 +169,7 @@ struct InjectorDensity
     void operator= (InjectorDensity const&) = delete;
     void operator= (InjectorDensity &&) = delete;
 
-    ~InjectorDensity ();
+    void clear ();
 
     // call getDensity from the object stored in the union
     // (the union is called Object, and the instance is called object).
@@ -221,6 +224,17 @@ private:
         InjectorDensityPredefined predefined;
     };
     Object object;
+};
+
+// In order for InjectorDensity to be trivially copyable, its destructor
+// must be trivial.  So we have to rely on a custom deleter for unique_ptr.
+struct InjectorDensityDeleter {
+    void operator () (InjectorDensity* p) const {
+        if (p) {
+            p->clear();
+            delete p;
+        }
+    }
 };
 
 #endif

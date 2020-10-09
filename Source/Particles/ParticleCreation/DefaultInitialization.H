@@ -8,8 +8,8 @@
 #ifndef DEFAULTINITIALIZATION_H_
 #define DEFAULTINITIALIZATION_H_
 
-#include "AMReX_REAL.H"
-#include "AMReX_GpuContainers.H"
+#include <AMReX_REAL.H>
+#include <AMReX_GpuContainers.H>
 
 #include <map>
 #include <string>
@@ -53,13 +53,13 @@ static std::map<std::string, InitializationPolicy> initialization_policies = {
 };
 
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-amrex::ParticleReal initializeRealValue (const InitializationPolicy policy) noexcept
+amrex::ParticleReal initializeRealValue (const InitializationPolicy policy, amrex::RandomEngine const& engine) noexcept
 {
     switch (policy) {
         case InitializationPolicy::Zero : return 0.0;
         case InitializationPolicy::One  : return 1.0;
         case InitializationPolicy::RandomExp : {
-            return -log(amrex::Random());
+            return -log(amrex::Random(engine));
         }
         default : {
             amrex::Abort("Initialization Policy not recognized");

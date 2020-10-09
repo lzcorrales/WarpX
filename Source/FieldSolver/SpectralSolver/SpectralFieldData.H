@@ -55,10 +55,17 @@ class SpectralFieldData
         SpectralFieldData() = default; // Default constructor
         SpectralFieldData& operator=(SpectralFieldData&& field_data) = default;
         ~SpectralFieldData();
-        void ForwardTransform( const amrex::MultiFab& mf,
-                               const int field_index, const int i_comp);
-        void BackwardTransform( amrex::MultiFab& mf,
-                               const int field_index, const int i_comp);
+
+        void ForwardTransform (const amrex::MultiFab& mf, const int field_index,
+                               const int i_comp, const amrex::IntVect& stag);
+        AMREX_FORCE_INLINE
+        void ForwardTransform (const amrex::MultiFab& mf, const int field_index, const int i_comp)
+        {
+            ForwardTransform(mf, field_index, i_comp, mf.ixType().toIntVect());
+        }
+
+        void BackwardTransform (amrex::MultiFab& mf, const int field_index, const int i_comp);
+
         // `fields` stores fields in spectral space, as multicomponent FabArray
         SpectralField fields;
 
@@ -74,16 +81,6 @@ class SpectralFieldData
                             zshift_FFTfromCell, zshift_FFTtoCell;
 #if (AMREX_SPACEDIM==3)
         SpectralShiftFactor yshift_FFTfromCell, yshift_FFTtoCell;
-#endif
-
-#ifdef AMREX_USE_GPU
-        /** \brief This method converts a cufftResult
-        * into the corresponding string
-        *
-        * @param[in] err a cufftResult
-        * @return an std::string
-        */
-        std::string cufftErrorToString (const cufftResult& err);
 #endif
 
         bool m_periodic_single_box;
