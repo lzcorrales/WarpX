@@ -35,12 +35,11 @@ FullDiagnostics::InitializeParticleBuffer ()
 
     const MultiParticleContainer& mpc = warpx.GetPartContainer();
     // If not specified, dump all species
-    if (m_species_names.size() == 0) m_species_names = mpc.GetSpeciesNames();
+    if (m_output_species_names.size() == 0) m_output_species_names = mpc.GetSpeciesNames();
     // Initialize one ParticleDiag per species requested
-    for (auto const& species : m_species_names){
+    for (auto const& species : m_output_species_names){
         const int idx = mpc.getSpeciesID(species);
-        m_all_species.push_back(ParticleDiag(m_diag_name, species,
-                                             mpc.GetParticleContainerPtr(idx)));
+        m_output_species.push_back(ParticleDiag(m_diag_name, species, mpc.GetParticleContainerPtr(idx)));
     }
 }
 
@@ -64,6 +63,8 @@ FullDiagnostics::ReadParameters ()
 
 #ifdef WARPX_DIM_RZ
     pp.query("dump_rz_modes", m_dump_rz_modes);
+#else
+    amrex::ignore_unused(m_dump_rz_modes);
 #endif
 
     if (m_format == "checkpoint"){
@@ -74,7 +75,7 @@ FullDiagnostics::ReadParameters ()
             "to file for a restart");
     }
     // Number of buffers = 1 for FullDiagnostics.
-    // It is used to allocate the number of output multu-level MultiFab, m_mf_output
+    // It is used to allocate the number of output multi-level MultiFab, m_mf_output
     m_num_buffers = 1;
 }
 
@@ -87,7 +88,7 @@ FullDiagnostics::Flush ( int i_buffer )
 
     m_flush_format->WriteToFile(
         m_varnames, m_mf_output[i_buffer], m_geom_output[i_buffer], warpx.getistep(),
-        warpx.gett_new(0), m_all_species, nlev_output, m_file_prefix,
+        warpx.gett_new(0), m_output_species, nlev_output, m_file_prefix,
         m_plot_raw_fields, m_plot_raw_fields_guards, m_plot_raw_rho, m_plot_raw_F);
 
     FlushRaw();
@@ -248,10 +249,19 @@ FullDiagnostics::InitializeFieldBufferData (int i_buffer, int lev ) {
     amrex::BoxArray ba = warpx.boxArray(lev);
     amrex::DistributionMapping dmap = warpx.DistributionMap(lev);
     // Check if warpx BoxArray is coarsenable.
-    AMREX_ALWAYS_ASSERT_WITH_MESSAGE (
-        ba.coarsenable(m_crse_ratio),
-        "Invalid coarsening ratio for warpx boxArray. Must be an integer divisor of the blocking factor."
-    );
+    if (warpx.get_numprocs() == 0)
+    {
+        AMREX_ALWAYS_ASSERT_WITH_MESSAGE (
+            ba.coarsenable(m_crse_ratio), "Invalid coarsening ratio for field diagnostics."
+            "Must be an integer divisor of the blocking factor.");
+    }
+    else
+    {
+        AMREX_ALWAYS_ASSERT_WITH_MESSAGE (
+            ba.coarsenable(m_crse_ratio), "Invalid coarsening ratio for field diagnostics."
+            "The total number of cells must be a multiple of the coarsening ratio multiplied by numprocs.");
+    }
+
     // Find if user-defined physical dimensions are different from the simulation domain.
     for (int idim=0; idim < AMREX_SPACEDIM; ++idim) {
          // To ensure that the diagnostic lo and hi are within the domain defined at level, lev.
@@ -265,9 +275,13 @@ FullDiagnostics::InitializeFieldBufferData (int i_buffer, int lev ) {
              use_warpxba = false;
 
         // User-defined value for coarsening should be an integer divisor of
-        // blocking factor at level, lev.
-        AMREX_ALWAYS_ASSERT_WITH_MESSAGE( blockingFactor[idim] % m_crse_ratio[idim]==0,
-                       " coarsening ratio must be integer divisor of blocking factor");
+        // blocking factor at level, lev. This assert is not relevant and thus
+        // removed if warpx.numprocs is used for the domain decomposition.
+        if (warpx.get_numprocs() == 0)
+        {
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE( blockingFactor[idim] % m_crse_ratio[idim]==0,
+                           " coarsening ratio must be integer divisor of blocking factor");
+        }
     }
 
     if (use_warpxba == false) {
@@ -322,7 +336,7 @@ FullDiagnostics::InitializeFieldBufferData (int i_buffer, int lev ) {
     // is different from the lo and hi physical co-ordinates of the simulation domain.
     if (use_warpxba == false) dmap = amrex::DistributionMapping{ba};
     // Allocate output MultiFab for diagnostics. The data will be stored at cell-centers.
-    int ngrow = (m_format == "sensei") ? 1 : 0;
+    int ngrow = (m_format == "sensei" || m_format == "ascent") ? 1 : 0;
     // The zero is hard-coded since the number of output buffers = 1 for FullDiagnostics
     m_mf_output[i_buffer][lev] = amrex::MultiFab(ba, dmap, m_varnames.size(), ngrow);
 
@@ -349,11 +363,12 @@ void
 FullDiagnostics::InitializeFieldFunctors (int lev)
 {
     auto & warpx = WarpX::GetInstance();
+
     // Clear any pre-existing vector to release stored data.
     m_all_field_functors[lev].clear();
 
     // Species index to loop over species that dump rho per species
-    int is_dump_rho = 0;
+    int i = 0;
 
     m_all_field_functors[lev].resize( m_varnames.size() );
     // Fill vector of functors for all components except individual cylindrical modes.
@@ -390,10 +405,10 @@ FullDiagnostics::InitializeFieldFunctors (int lev)
                 // Initialize rho functor to dump total rho
                 m_all_field_functors[lev][comp] = std::make_unique<RhoFunctor>(lev, m_crse_ratio);
             }
-        } else if ( m_varnames[comp].find("rho_") != std::string::npos ){
+        } else if ( m_varnames[comp].rfind("rho_", 0) == 0 ){
             // Initialize rho functor to dump rho per species
-            m_all_field_functors[lev][comp] = std::make_unique<RhoFunctor>(lev, m_crse_ratio, m_rho_per_species_index[is_dump_rho]);
-            is_dump_rho++;
+            m_all_field_functors[lev][comp] = std::make_unique<RhoFunctor>(lev, m_crse_ratio, m_rho_per_species_index[i]);
+            i++;
         } else if ( m_varnames[comp] == "F" ){
             m_all_field_functors[lev][comp] = std::make_unique<CellCenterFunctor>(warpx.get_pointer_F_fp(lev), lev, m_crse_ratio);
         } else if ( m_varnames[comp] == "part_per_cell" ){
@@ -427,8 +442,8 @@ FullDiagnostics::PrepareFieldDataForOutput ()
     warpx.UpdateAuxilaryData();
 
     // Update the RealBox used for the geometry filter in particle diags
-    for (int i = 0; i < m_all_species.size(); ++i) {
-        m_all_species[i].m_diag_domain = m_geom_output[0][0].ProbDomain();
+    for (int i = 0; i < m_output_species.size(); ++i) {
+        m_output_species[i].m_diag_domain = m_geom_output[0][0].ProbDomain();
     }
 }
 
