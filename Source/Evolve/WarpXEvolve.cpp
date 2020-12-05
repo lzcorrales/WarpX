@@ -13,11 +13,9 @@
 #include "Utils/WarpXConst.H"
 #include "Utils/WarpXUtil.H"
 #include "Utils/WarpXAlgorithmSelection.H"
-#ifdef WARPX_USE_PY
-#   include "Python/WarpX_py.H"
-#endif
+#include "Python/WarpX_py.H"
 #ifdef WARPX_USE_PSATD
-#include "FieldSolver/SpectralSolver/SpectralSolver.H"
+#   include "FieldSolver/SpectralSolver/SpectralSolver.H"
 #endif
 
 #include <cmath>
@@ -53,9 +51,8 @@ WarpX::Evolve (int numsteps)
 
         // Start loop on time steps
         amrex::Print() << "\nSTEP " << step+1 << " starts ...\n";
-#ifdef WARPX_USE_PY
+
         if (warpx_py_beforestep) warpx_py_beforestep();
-#endif
 
         amrex::LayoutData<amrex::Real>* cost = WarpX::getCosts(0);
         if (cost) {
@@ -94,6 +91,7 @@ WarpX::Evolve (int numsteps)
             FillBoundaryE(guard_cells.ng_alloc_EB, guard_cells.ng_Extra);
             FillBoundaryB(guard_cells.ng_alloc_EB, guard_cells.ng_Extra);
             UpdateAuxilaryData();
+            FillBoundaryAux(guard_cells.ng_UpdateAux);
             // on first step, push p by -0.5*dt
             for (int lev = 0; lev <= finest_level; ++lev)
             {
@@ -117,9 +115,11 @@ WarpX::Evolve (int numsteps)
                 FillBoundaryB_avg(guard_cells.ng_FieldGather, guard_cells.ng_Extra);
             }
 #ifndef WARPX_USE_PSATD
+            // TODO Remove call to FillBoundaryAux before UpdateAuxilaryData?
             FillBoundaryAux(guard_cells.ng_UpdateAux);
 #endif
             UpdateAuxilaryData();
+            FillBoundaryAux(guard_cells.ng_UpdateAux);
         }
         if (do_subcycling == 0 || finest_level == 0) {
             OneStep_nosub(cur_time);
@@ -139,12 +139,12 @@ WarpX::Evolve (int numsteps)
             // B : guard cells are NOT up-to-date
         }
 
-#ifdef WARPX_USE_PY
         if (warpx_py_beforeEsolve) warpx_py_beforeEsolve();
-#endif
+
         if (cur_time + dt[0] >= stop_time - 1.e-3*dt[0] || step == numsteps_max-1) {
             // At the end of last step, push p by 0.5*dt to synchronize
             UpdateAuxilaryData();
+            FillBoundaryAux(guard_cells.ng_UpdateAux);
             for (int lev = 0; lev <= finest_level; ++lev) {
                 mypc->PushP(lev, 0.5*dt[lev],
                             *Efield_aux[lev][0],*Efield_aux[lev][1],
@@ -154,9 +154,8 @@ WarpX::Evolve (int numsteps)
             }
             is_synchronized = true;
         }
-#ifdef WARPX_USE_PY
+
         if (warpx_py_afterEsolve) warpx_py_afterEsolve();
-#endif
 
         for (int lev = 0; lev <= max_level; ++lev) {
             ++istep[lev];
@@ -183,7 +182,7 @@ WarpX::Evolve (int numsteps)
         mypc->ApplyBoundaryConditions();
 
         // Electrostatic solver: particles can move by an arbitrary number of cells
-        if( do_electrostatic )
+        if( do_electrostatic != ElectrostaticSolverAlgo::None )
         {
             mypc->Redistribute();
         } else
@@ -237,9 +236,8 @@ WarpX::Evolve (int numsteps)
             break;
         }
 
-#ifdef WARPX_USE_PY
         if (warpx_py_afterstep) warpx_py_afterstep();
-#endif
+
         // End loop on time steps
     }
 
@@ -258,7 +256,7 @@ void
 WarpX::OneStep_nosub (Real cur_time)
 {
 
-    if (do_electrostatic) {
+    if( do_electrostatic != ElectrostaticSolverAlgo::None ) {
         // Electrostatic solver:
         // For each species: deposit charge and add the associated space-charge
         // E and B field to the grid ; this is done at the beginning of the PIC
@@ -280,16 +278,12 @@ WarpX::OneStep_nosub (Real cur_time)
     //               from p^{n-1/2} to p^{n+1/2}
     // Deposit current j^{n+1/2}
     // Deposit charge density rho^{n}
-#ifdef WARPX_USE_PY
     if (warpx_py_particleinjection) warpx_py_particleinjection();
     if (warpx_py_particlescraper) warpx_py_particlescraper();
     if (warpx_py_beforedeposition) warpx_py_beforedeposition();
-#endif
     PushParticlesandDepose(cur_time);
 
-#ifdef WARPX_USE_PY
     if (warpx_py_afterdeposition) warpx_py_afterdeposition();
-#endif
 
 // TODO
 // Apply current correction in Fourier space: for domain decomposition with local
@@ -332,7 +326,7 @@ WarpX::OneStep_nosub (Real cur_time)
     if (do_pml && pml_has_particles) CopyJPML();
     if (do_pml && do_pml_j_damping) DampJPML();
 
-    if (!do_electrostatic) {
+    if( do_electrostatic == ElectrostaticSolverAlgo::None ) {
     // Electromagnetic solver:
     // Push E and B from {n} to {n+1}
     // (And update guard cells immediately afterwards)
@@ -407,7 +401,7 @@ WarpX::OneStep_nosub (Real cur_time)
 void
 WarpX::OneStep_sub1 (Real curtime)
 {
-    if( do_electrostatic )
+    if( do_electrostatic != ElectrostaticSolverAlgo::None )
     {
         amrex::Abort("Electrostatic solver cannot be used with sub-cycling.");
     }
@@ -481,9 +475,11 @@ WarpX::OneStep_sub1 (Real curtime)
     EvolveE(coarse_lev, PatchType::fine, 0.5*dt[coarse_lev]);
     FillBoundaryE(coarse_lev, PatchType::fine, guard_cells.ng_FieldGather + guard_cells.ng_Extra);
 
+    // TODO Remove call to FillBoundaryAux before UpdateAuxilaryData?
     FillBoundaryAux(guard_cells.ng_UpdateAux);
     // iii) Get auxiliary fields on the fine grid, at dt[fine_lev]
     UpdateAuxilaryData();
+    FillBoundaryAux(guard_cells.ng_UpdateAux);
 
     // iv) Push particles and fields on the fine patch (second fine step)
     PushParticlesandDepose(fine_lev, curtime+dt[fine_lev], DtType::SecondHalf);

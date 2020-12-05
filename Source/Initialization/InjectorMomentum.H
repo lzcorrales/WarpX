@@ -15,6 +15,9 @@
 #include <AMReX_Gpu.H>
 #include <AMReX_Dim3.H>
 
+#include <cmath>
+
+
 // struct whose getMomentum returns constant momentum.
 struct InjectorMomentumConstant
 {
@@ -124,8 +127,8 @@ struct InjectorMomentumBoltzmann
         // Each value of sqrt(-log(x1))*sin(2*pi*x2) is a sample from a Boltzmann
         // distribution with sigma = average velocity / c
         // using the Box-Mueller Method.
-        u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*M_PI*x2); 
-        u[(dir+2)%3] = vave*std::sqrt(-std::log(x1)) *std::cos(2*M_PI*x2);
+	u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*MathConst::pi*x2); 
+        u[(dir+2)%3] = vave*std::sqrt(-std::log(x1)) *std::cos(2*MathConst::pi*x2);
         u[dir] = vave*std::sqrt(-std::log(amrex::Random(engine)))*
              std::sin(2*M_PI*amrex::Random(engine));
 	// u[(dir+1)%3] = 0;
@@ -167,8 +170,13 @@ struct InjectorMomentumBoltzmann
         using namespace amrex;
         Real u[3];
         for (int idim = 0; idim < 3; ++idim) u[idim] = 0.0_rt;
+<<<<<<< HEAD
         const Real gamma = 1./sqrt(1+beta0*beta0);
         u[dir] = gamma*beta0;
+=======
+        const Real gamma = static_cast<amrex::Real>(1./sqrt(1+beta*beta));
+        u[dir] = gamma*beta;
+>>>>>>> 1f8ab0e625f27e9201b0da9dcfbab52c30112089
         return XDim3 {u[0],u[1],u[2]};
     }
 
@@ -200,6 +208,7 @@ struct InjectorMomentumJuttner
         // from Zenitani 2015 (Phys. Plasmas 22, 042116).
         amrex::Real x1, x2, gamma, theta, beta, A, B, C;
         amrex::Real u [3];
+<<<<<<< HEAD
 	if(cellCentered)
 	{
 	    // x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
@@ -219,6 +228,11 @@ struct InjectorMomentumJuttner
         x1 = 0.;
         gamma = 0.;
         u[dir] = 0.;
+=======
+        x1 = static_cast<amrex::Real>(0.);
+        gamma = static_cast<amrex::Real>(0.);
+        u[dir] = static_cast<amrex::Real>(0.);
+>>>>>>> 1f8ab0e625f27e9201b0da9dcfbab52c30112089
         // This condition is equation 10 in Zenitani,
         // though x1 is defined differently.
 
@@ -238,8 +252,13 @@ struct InjectorMomentumJuttner
 	C = x2 * 2.0 * M_PI;
         // Direction dir is an input parameter that sets the boost direction:
         // 'x' -> d = 0, 'y' -> d = 1, 'z' -> d = 2.
+<<<<<<< HEAD
         u[(dir+1)%3] = u[dir]*A*std::sin(C);
 	u[(dir+2)%3] = u[dir]*A*std::cos(C);
+=======
+        u[(dir+1)%3] = 2*u[dir]*std::sqrt(x1*(1-x1))*std::sin(2*MathConst::pi*x2);
+        u[(dir+2)%3] = 2*u[dir]*std::sqrt(x1*(1-x1))*std::cos(2*MathConst::pi*x2);
+>>>>>>> 1f8ab0e625f27e9201b0da9dcfbab52c30112089
         // The value of dir is the boost direction to be transformed.
         u[dir] = u[dir]*B;	
 	// u[(dir+1)%3] = 0;
@@ -279,8 +298,13 @@ struct InjectorMomentumJuttner
         using namespace amrex;
         Real u[3];
         for (int idim = 0; idim < 3; ++idim) u[idim] = 0.0_rt;
+<<<<<<< HEAD
         const Real gamma = 1./sqrt(1+beta0*beta0);
         u[dir] = gamma*beta0;
+=======
+        const Real gamma = static_cast<Real>(1./sqrt(1.+beta*beta));
+        u[dir] = gamma*beta;
+>>>>>>> 1f8ab0e625f27e9201b0da9dcfbab52c30112089
         return XDim3 {u[0],u[1],u[2]};
     }
 

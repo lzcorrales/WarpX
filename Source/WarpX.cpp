@@ -81,6 +81,12 @@ long WarpX::nox = 1;
 long WarpX::noy = 1;
 long WarpX::noz = 1;
 
+// For momentum-conserving field gathering, order of interpolation from the
+// staggered positions to the grid nodes
+int WarpX::field_gathering_nox = 2;
+int WarpX::field_gathering_noy = 2;
+int WarpX::field_gathering_noz = 2;
+
 bool WarpX::use_fdtd_nci_corr = false;
 bool WarpX::galerkin_interpolation = true;
 
@@ -110,7 +116,10 @@ Real WarpX::particle_slice_width_lab = 0.0;
 
 bool WarpX::do_dynamic_scheduling = true;
 
-int WarpX::do_electrostatic = 0;
+int WarpX::do_electrostatic;
+Real WarpX::self_fields_required_precision = 1.e-11;
+int WarpX::self_fields_max_iters = 200;
+
 int WarpX::do_subcycling = 0;
 bool WarpX::safe_guard_cells = 0;
 
@@ -200,6 +209,7 @@ WarpX::WarpX ()
 
     F_fp.resize(nlevs_max);
     rho_fp.resize(nlevs_max);
+    phi_fp.resize(nlevs_max);
     current_fp.resize(nlevs_max);
     Efield_fp.resize(nlevs_max);
     Bfield_fp.resize(nlevs_max);
@@ -317,7 +327,7 @@ WarpX::ReadParameters ()
     {
         ParmParse pp;// Traditionally, max_step and stop_time do not have prefix.
         pp.query("max_step", max_step);
-        pp.query("stop_time", stop_time);
+        queryWithParser(pp, "stop_time", stop_time);
         pp.query("authors", authors);
     }
 
@@ -364,7 +374,7 @@ WarpX::ReadParameters ()
             }
         }
 
-        pp.query("cfl", cfl);
+        queryWithParser(pp, "cfl", cfl);
         pp.query("verbose", verbose);
         pp.query("regrid_int", regrid_int);
         pp.query("do_subcycling", do_subcycling);
@@ -384,7 +394,7 @@ WarpX::ReadParameters ()
         // pp.query returns 1 if argument zmax_plasma_to_compute_max_step is
         // specified by the user, 0 otherwise.
         do_compute_max_step_from_zmax =
-            pp.query("zmax_plasma_to_compute_max_step",
+            queryWithParser(pp, "zmax_plasma_to_compute_max_step",
                       zmax_plasma_to_compute_max_step);
 
         pp.query("do_moving_window", do_moving_window);
@@ -435,8 +445,8 @@ WarpX::ReadParameters ()
             // Read either dz_snapshots_lab or dt_snapshots_lab
             bool snapshot_interval_is_specified = 0;
             Real dz_snapshots_lab = 0;
-            snapshot_interval_is_specified += pp.query("dt_snapshots_lab", dt_snapshots_lab);
-            if ( pp.query("dz_snapshots_lab", dz_snapshots_lab) ){
+            snapshot_interval_is_specified += queryWithParser(pp, "dt_snapshots_lab", dt_snapshots_lab);
+            if ( queryWithParser(pp, "dz_snapshots_lab", dz_snapshots_lab) ){
                 dt_snapshots_lab = dz_snapshots_lab/PhysConst::c;
                 snapshot_interval_is_specified = 1;
             }
@@ -456,14 +466,21 @@ WarpX::ReadParameters ()
                    "The boosted frame diagnostic currently only works if the moving window is in the z direction.");
         }
 
-        pp.query("do_electrostatic", do_electrostatic);
+        do_electrostatic = GetAlgorithmInteger(pp, "do_electrostatic");
+
+        if (do_electrostatic == ElectrostaticSolverAlgo::LabFrame) {
+            pp.query("self_fields_required_precision", self_fields_required_precision);
+            pp.query("self_fields_max_iters", self_fields_max_iters);
+            // Note that with the relativistic version, these parameters would be
+            // input for each species.
+        }
+
         pp.query("n_buffer", n_buffer);
         pp.query("const_dt", const_dt);
 
         // Read filter and fill IntVect filter_npass_each_dir with
         // proper size for AMREX_SPACEDIM
         pp.query("use_filter", use_filter);
-        pp.query("use_kspace_filter", use_kspace_filter);
         pp.query("use_filter_compensation", use_filter_compensation);
         Vector<int> parse_filter_npass_each_dir(AMREX_SPACEDIM,1);
         pp.queryarr("filter_npass_each_dir", parse_filter_npass_each_dir);
@@ -471,6 +488,12 @@ WarpX::ReadParameters ()
         filter_npass_each_dir[1] = parse_filter_npass_each_dir[1];
 #if (AMREX_SPACEDIM == 3)
         filter_npass_each_dir[2] = parse_filter_npass_each_dir[2];
+#endif
+
+#if (defined WARPX_DIM_RZ) && (defined WARPX_USE_PSATD)
+        // With RZ spectral, only use k-space filtering
+        use_kspace_filter = use_filter;
+        use_filter = false;
 #endif
 
         pp.query("num_mirrors", num_mirrors);
@@ -503,10 +526,12 @@ WarpX::ReadParameters ()
                 sort_bin_size[i] = vect_sort_bin_size[i];
         }
 
-        double quantum_xi;
-        int quantum_xi_is_specified = pp.query("quantum_xi", quantum_xi);
-        if (quantum_xi_is_specified)
+        amrex::Real quantum_xi_tmp;
+        int quantum_xi_is_specified = queryWithParser(pp, "quantum_xi", quantum_xi_tmp);
+        if (quantum_xi_is_specified) {
+            double const quantum_xi = quantum_xi_tmp;
             quantum_xi_c2 = quantum_xi * PhysConst::c * PhysConst::c;
+        }
 
         pp.query("do_pml", do_pml);
         pp.query("pml_ncell", pml_ncell);
@@ -623,6 +648,22 @@ WarpX::ReadParameters ()
         pp.query("noy", noy);
         pp.query("noz", noz);
 
+#ifdef WARPX_USE_PSATD
+        // For momentum-conserving field gathering, read from input the order of
+        // interpolation from the staggered positions to the grid nodes
+        if (field_gathering_algo == GatheringAlgo::MomentumConserving) {
+            pp.query("field_gathering_nox", field_gathering_nox);
+            pp.query("field_gathering_noy", field_gathering_noy);
+            pp.query("field_gathering_noz", field_gathering_noz);
+        }
+
+        if (maxLevel() > 0) {
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+                field_gathering_nox == 2 && field_gathering_noy == 2 && field_gathering_noz == 2,
+                "High-order interpolation (order > 2) is not implemented with mesh refinement");
+        }
+#endif
+
         pp.query("galerkin_scheme",galerkin_interpolation);
 
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE( nox == noy and nox == noz ,
@@ -669,24 +710,39 @@ WarpX::ReadParameters ()
 
         pp.query("current_correction", current_correction);
         pp.query("v_galilean", m_v_galilean);
+        pp.query("v_comoving", m_v_comoving);
         pp.query("do_time_averaging", fft_do_time_averaging);
 
-      // Scale the velocity by the speed of light
+        // Scale the velocity by the speed of light
         for (int i=0; i<3; i++) m_v_galilean[i] *= PhysConst::c;
+        for (int i=0; i<3; i++) m_v_comoving[i] *= PhysConst::c;
+
+        // The comoving PSATD algorithm is not implemented nor tested with Esirkepov current deposition
+        if (current_deposition_algo == CurrentDepositionAlgo::Esirkepov) {
+            if (m_v_comoving[0] != 0. || m_v_comoving[1] != 0. || m_v_comoving[2] != 0.) {
+                amrex::Abort("Esirkepov current deposition cannot be used with the comoving PSATD algorithm");
+            }
+        }
 
 #   ifdef WARPX_DIM_RZ
         update_with_rho = true;  // Must be true for RZ PSATD
 #   else
-        if (m_v_galilean[0] == 0. && m_v_galilean[1] == 0. && m_v_galilean[2] == 0.) {
+        if (m_v_galilean[0] == 0. && m_v_galilean[1] == 0. && m_v_galilean[2] == 0. &&
+            m_v_comoving[0] == 0. && m_v_comoving[1] == 0. && m_v_comoving[2] == 0.) {
             update_with_rho = false; // standard PSATD
         }
         else {
-            update_with_rho = true;  // Galilean PSATD
+            update_with_rho = true;  // Galilean PSATD or comoving PSATD
         }
 #   endif
 
         // Overwrite update_with_rho with value set in input file
         pp.query("update_with_rho", update_with_rho);
+
+        if (m_v_comoving[0] != 0. || m_v_comoving[1] != 0. || m_v_comoving[2] != 0.) {
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(update_with_rho,
+                "psatd.update_with_rho must be equal to 1 for comoving PSATD");
+        }
 
 #   ifdef WARPX_DIM_RZ
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(update_with_rho,
@@ -771,6 +827,10 @@ WarpX::BackwardCompatibility ()
         amrex::Abort("warpx.plot_crsepatch is not supported anymore. "
                      "Please use the new syntax for diagnostics, see documentation.");
     }
+    if (ppw.query("use_kspace_filter", backward_int)){
+        amrex::Abort("warpx.use_kspace_filter is not supported anymore. "
+                     "Please use the flag use_filter, see documentation.");
+    }
 
     ParmParse ppalgo("algo");
     int backward_mw_solver;
@@ -834,6 +894,7 @@ WarpX::ClearLevel (int lev)
 
     F_fp  [lev].reset();
     rho_fp[lev].reset();
+    phi_fp[lev].reset();
     F_cp  [lev].reset();
     rho_cp[lev].reset();
 
@@ -859,6 +920,7 @@ WarpX::AllocLevelData (int lev, const BoxArray& ba, const DistributionMapping& d
         maxwell_solver_id,
         maxLevel(),
         WarpX::m_v_galilean,
+        WarpX::m_v_comoving,
         safe_guard_cells);
 
     if (mypc->nSpeciesDepositOnMainGrid() && n_current_deposition_buffer == 0) {
@@ -892,6 +954,7 @@ WarpX::AllocLevelMFs (int lev, const BoxArray& ba, const DistributionMapping& dm
     IntVect Bx_nodal_flag, By_nodal_flag, Bz_nodal_flag;
     IntVect jx_nodal_flag, jy_nodal_flag, jz_nodal_flag;
     IntVect rho_nodal_flag;
+    IntVect phi_nodal_flag;
 
     // Set nodal flags
 #if   (AMREX_SPACEDIM == 2)
@@ -917,6 +980,7 @@ WarpX::AllocLevelMFs (int lev, const BoxArray& ba, const DistributionMapping& dm
     jz_nodal_flag = IntVect(1,1,0);
 #endif
     rho_nodal_flag = IntVect( AMREX_D_DECL(1,1,1) );
+    phi_nodal_flag = IntVect::TheNodeVector();
 
     // Overwrite nodal flags if necessary
     if (do_nodal) {
@@ -991,6 +1055,12 @@ WarpX::AllocLevelMFs (int lev, const BoxArray& ba, const DistributionMapping& dm
         rho_fp[lev] = std::make_unique<MultiFab>(amrex::convert(ba,rho_nodal_flag),dm,2*ncomps,ngRho);
     }
 
+    if (do_electrostatic == ElectrostaticSolverAlgo::LabFrame)
+    {
+        IntVect ngPhi = IntVect( AMREX_D_DECL(1,1,1) );
+        phi_fp[lev] = std::make_unique<MultiFab>(amrex::convert(ba,phi_nodal_flag),dm,ncomps,ngPhi);
+    }
+
     if (do_subcycling == 1 && lev == 0)
     {
         current_store[lev][0] = std::make_unique<MultiFab>(amrex::convert(ba,jx_nodal_flag),dm,ncomps,ngJ);
@@ -1042,7 +1112,7 @@ WarpX::AllocLevelMFs (int lev, const BoxArray& ba, const DistributionMapping& dm
     }
     bool const pml_flag_false=false;
     spectral_solver_fp[lev] = std::make_unique<SpectralSolver>( realspace_ba, dm,
-        nox_fft, noy_fft, noz_fft, do_nodal, m_v_galilean, dx_vect, dt[lev],
+        nox_fft, noy_fft, noz_fft, do_nodal, m_v_galilean, m_v_comoving, dx_vect, dt[lev],
         pml_flag_false, fft_periodic_single_box, update_with_rho, fft_do_time_averaging );
 #   endif
 #endif
@@ -1160,7 +1230,7 @@ WarpX::AllocLevelMFs (int lev, const BoxArray& ba, const DistributionMapping& dm
 #   else
         c_realspace_ba.grow(ngE); // add guard cells
         spectral_solver_cp[lev] = std::make_unique<SpectralSolver>( c_realspace_ba, dm,
-            nox_fft, noy_fft, noz_fft, do_nodal, m_v_galilean, cdx_vect, dt[lev],
+            nox_fft, noy_fft, noz_fft, do_nodal, m_v_galilean, m_v_comoving, cdx_vect, dt[lev],
             pml_flag_false, fft_periodic_single_box, update_with_rho, fft_do_time_averaging );
 #   endif
 #endif
@@ -1295,7 +1365,7 @@ WarpX::ComputeDivB (amrex::MultiFab& divB, int const dcomp,
         "ComputeDivB not implemented with do_nodal."
         "Shouldn't be too hard to make it general with class FiniteDifferenceSolver");
 
-    Real dxinv = 1./dx[0], dyinv = 1./dx[1], dzinv = 1./dx[2];
+    Real dxinv = 1._rt/dx[0], dyinv = 1._rt/dx[1], dzinv = 1._rt/dx[2];
 
 #ifdef WARPX_DIM_RZ
     const Real rmin = GetInstance().Geom(0).ProbLo(0);
@@ -1333,7 +1403,7 @@ WarpX::ComputeDivB (amrex::MultiFab& divB, int const dcomp,
         "ComputeDivB not implemented with do_nodal."
         "Shouldn't be too hard to make it general with class FiniteDifferenceSolver");
 
-    Real dxinv = 1./dx[0], dyinv = 1./dx[1], dzinv = 1./dx[2];
+    Real dxinv = 1._rt/dx[0], dyinv = 1._rt/dx[1], dzinv = 1._rt/dx[2];
 
 #ifdef WARPX_DIM_RZ
     const Real rmin = GetInstance().Geom(0).ProbLo(0);

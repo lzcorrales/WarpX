@@ -22,7 +22,6 @@
 #include <string>
 #include <memory>
 
-
 using namespace amrex;
 
 namespace {
@@ -34,40 +33,6 @@ namespace {
         string = stringstream.str();
         amrex::Abort(string.c_str());
     }
-
-    Real parseChargeName(const ParmParse& pp, const std::string& name) {
-        Real result;
-        if (name == "q_e") {
-            return PhysConst::q_e;
-        } else if (pp.query("charge", result)) {
-            return result;
-        } else {
-            StringParseAbortMessage("Charge", name);
-            return 0.0;
-        }
-    }
-
-    Real parseChargeString(const ParmParse& pp, const std::string& name) {
-        if(name.substr(0, 1) == "-")
-            return -1.0 * parseChargeName(pp, name.substr(1, name.size() - 1));
-        return parseChargeName(pp, name);
-    }
-
-    Real parseMassString(const ParmParse& pp, const std::string& name) {
-        Real result;
-        if (name == "m_e") {
-            return PhysConst::m_e;
-        } else if (name == "m_p"){
-            return PhysConst::m_p;
-        } else if (name == "inf"){
-            return std::numeric_limits<double>::infinity();
-        } else if (pp.query("mass", result)) {
-            return result;
-        } else {
-            StringParseAbortMessage("Mass", name);
-            return 0.0;
-        }
-    }
 }
 
 PlasmaInjector::PlasmaInjector () {}
@@ -77,12 +42,14 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name)
 {
     ParmParse pp(species_name);
 
+#ifdef AMREX_USE_GPU
     static_assert(std::is_trivially_copyable<InjectorPosition>::value,
                   "InjectorPosition must be trivially copyable");
     static_assert(std::is_trivially_copyable<InjectorDensity>::value,
                   "InjectorDensity must be trivially copyable");
     static_assert(std::is_trivially_copyable<InjectorMomentum>::value,
                   "InjectorMomentum must be trivially copyable");
+#endif
 
     pp.query("radially_weighted", radially_weighted);
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(radially_weighted, "ERROR: Only radially_weighted=true is supported");
@@ -120,23 +87,21 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name)
     }
 #   endif
 
-    pp.query("xmin", xmin);
-    pp.query("ymin", ymin);
-    pp.query("zmin", zmin);
-    pp.query("xmax", xmax);
-    pp.query("ymax", ymax);
-    pp.query("zmax", zmax);
+    queryWithParser(pp, "xmin", xmin);
+    queryWithParser(pp, "ymin", ymin);
+    queryWithParser(pp, "zmin", zmin);
+    queryWithParser(pp, "xmax", xmax);
+    queryWithParser(pp, "ymax", ymax);
+    queryWithParser(pp, "zmax", zmax);
 
-    pp.query("density_min", density_min);
-    pp.query("density_max", density_max);
+    queryWithParser(pp, "density_min", density_min);
+    queryWithParser(pp, "density_max", density_max);
 
     std::string physical_species_s;
     bool species_is_specified = pp.query("species_type", physical_species_s);
     if (species_is_specified){
         physical_species = species::from_string( physical_species_s );
-        // charge = SpeciesCharge[physical_species];
         charge = species::get_charge( physical_species );
-        // mass = SpeciesMass[physical_species];
         mass = species::get_mass( physical_species );
     }
 
@@ -144,18 +109,9 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name)
     pp.query("injection_style", s_inj_style);
 
     // parse charge and mass
-    std::string charge_s;
-    std::string mass_s;
-    bool charge_is_specified = pp.query("charge", charge_s);
-    bool mass_is_specified = pp.query("mass", mass_s);
+    bool charge_is_specified = queryWithParser(pp, "charge", charge);
+    bool mass_is_specified = queryWithParser(pp, "mass", mass);
 
-    if (charge_is_specified){
-        std::transform(charge_s.begin(),
-                       charge_s.end(),
-                       charge_s.begin(),
-                       ::tolower);
-        charge = parseChargeString(pp, charge_s);
-    }
     if ( charge_is_specified && species_is_specified ){
         Print() << "WARNING: Both '" << species_name << ".charge' and "
                 << species_name << ".species_type' are specified\n'"
@@ -166,13 +122,6 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name)
         amrex::Abort("Need to specify at least one of species_type or charge");
     }
 
-    if (mass_is_specified){
-        std::transform(mass_s.begin(),
-                       mass_s.end(),
-                       mass_s.begin(),
-                       ::tolower);
-        mass = parseMassString(pp, mass_s);
-    }
     if ( mass_is_specified && species_is_specified ){
         Print() << "WARNING: Both '" << species_name << ".mass' and "
                 << species_name << ".species_type' are specified\n'"
@@ -203,16 +152,16 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name)
         add_single_particle = true;
         return;
     } else if (part_pos_s == "gaussian_beam") {
-        pp.get("x_m", x_m);
-        pp.get("y_m", y_m);
-        pp.get("z_m", z_m);
-        pp.get("x_rms", x_rms);
-        pp.get("y_rms", y_rms);
-        pp.get("z_rms", z_rms);
-        pp.query("x_cut", x_cut);
-        pp.query("y_cut", y_cut);
-        pp.query("z_cut", z_cut);
-        pp.get("q_tot", q_tot);
+        getWithParser(pp, "x_m", x_m);
+        getWithParser(pp, "y_m", y_m);
+        getWithParser(pp, "z_m", z_m);
+        getWithParser(pp, "x_rms", x_rms);
+        getWithParser(pp, "y_rms", y_rms);
+        getWithParser(pp, "z_rms", z_rms);
+        queryWithParser(pp, "x_cut", x_cut);
+        queryWithParser(pp, "y_cut", y_cut);
+        queryWithParser(pp, "z_cut", z_cut);
+        getWithParser(pp, "q_tot", q_tot);
         pp.get("npart", npart);
         pp.query("do_symmetrize", do_symmetrize);
         gaussian_beam = true;
@@ -272,8 +221,8 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name)
         std::string str_injection_file;
         pp.get("injection_file", str_injection_file);
         // optional parameters
-        pp.query("q_tot", q_tot);
-        pp.query("z_shift",z_shift);
+        queryWithParser(pp, "q_tot", q_tot);
+        queryWithParser(pp, "z_shift",z_shift);
 
 #ifdef WARPX_USE_OPENPMD
         if (ParallelDescriptor::IOProcessor()) {
@@ -461,9 +410,9 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
         Real ux = 0.;
         Real uy = 0.;
         Real uz = 0.;
-        pp.query("ux", ux);
-        pp.query("uy", uy);
-        pp.query("uz", uz);
+        queryWithParser(pp, "ux", ux);
+        queryWithParser(pp, "uy", uy);
+        queryWithParser(pp, "uz", uz);
         // Construct InjectorMomentum with InjectorMomentumConstant.
         h_inj_mom.reset(new InjectorMomentum((InjectorMomentumConstant*)nullptr, ux,uy, uz));
     } else if (mom_dist_s == "custom") {
@@ -476,12 +425,12 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
         Real ux_th = 0.;
         Real uy_th = 0.;
         Real uz_th = 0.;
-        pp.query("ux_m", ux_m);
-        pp.query("uy_m", uy_m);
-        pp.query("uz_m", uz_m);
-        pp.query("ux_th", ux_th);
-        pp.query("uy_th", uy_th);
-        pp.query("uz_th", uz_th);
+        queryWithParser(pp, "ux_m", ux_m);
+        queryWithParser(pp, "uy_m", uy_m);
+        queryWithParser(pp, "uz_m", uz_m);
+        queryWithParser(pp, "ux_th", ux_th);
+        queryWithParser(pp, "uy_th", uy_th);
+        queryWithParser(pp, "uz_th", uz_th);
         // Construct InjectorMomentum with InjectorMomentumGaussian.
         h_inj_mom.reset(new InjectorMomentum((InjectorMomentumGaussian*)nullptr,
                                              ux_m, uy_m, uz_m, ux_th, uy_th, uz_th));
@@ -505,7 +454,8 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
 	
 	bool b, s, l, n, d;
 
-	b = pp.query("beta", beta);
+	b = queryWithParser(pp,"beta", beta);
+
         if(b){
 	    if(beta < 0){
 		amrex::Abort("Please enter a positive beta value. Drift direction is set with <s_name>.bulk_vel_dir = 'x' or '+x', '-x', 'y' or '+y', etc.");
@@ -546,8 +496,7 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
 	}
 	else if(!d){
 	    delta = std::sqrt(1.0/nbnd * sigma) * lambdae/(2.0 * beta )/(M_PI/2.0 + 5.0-1.0);
-	}
-	
+	}       
         if(direction[0] == '-'){
             beta = -beta;
         }
@@ -589,7 +538,7 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
 
 	bool b, s, l, n, d;
 
-	b = pp.query("beta", beta);
+	b = queryWithParser(pp, "beta", beta);
         if(b){
 	    if(beta < 0){
 		amrex::Abort("Please enter a positive beta value. Drift direction is set with <s_name>.bulk_vel_dir = 'x' or '+x', '-x', 'y' or '+y', etc.");
@@ -632,7 +581,6 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
 	else if(!d){
 	    delta = std::sqrt(1.0/nbnd * sigma) * lambdae/(2.0 * beta )/(M_PI/2.0 + 5.0-1.0);
 	}
-	
         if(direction[0] == '-'){
             beta = -beta;
         }
@@ -655,7 +603,7 @@ void PlasmaInjector::parseMomentum (ParmParse& pp)
         h_inj_mom.reset(new InjectorMomentum((InjectorMomentumJuttner*)nullptr, sigma, lambdae, beta, nbnd, delta, xcs, cellSize, dir, cellCentered));
     } else if (mom_dist_s == "radial_expansion") {
         Real u_over_r = 0.;
-        pp.query("u_over_r", u_over_r);
+        queryWithParser(pp, "u_over_r", u_over_r);
         // Construct InjectorMomentum with InjectorMomentumRadialExpansion.
         h_inj_mom.reset(new InjectorMomentum
                         ((InjectorMomentumRadialExpansion*)nullptr, u_over_r));

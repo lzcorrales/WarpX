@@ -42,12 +42,14 @@ set_default_install_dirs()
 
 # Options and Variants ########################################################
 #
+option(WarpX_APP           "Build the WarpX executable application"     ON)
 option(WarpX_ASCENT        "Ascent in situ diagnostics"                 OFF)
+option(WarpX_LIB           "Build WarpX as a shared library"            OFF)
 option(WarpX_MPI           "Multi-node support (message-passing)"       ON)
 option(WarpX_OPENPMD       "openPMD I/O (HDF5, ADIOS)"                  OFF)
 option(WarpX_PSATD         "spectral solver support"                    OFF)
 option(WarpX_QED           "PICSAR QED (requires Boost and PICSAR)"     OFF)
-# TODO: python, sensei, legacy hdf5?
+# TODO: sensei, legacy hdf5?
 
 set(WarpX_DIMS_VALUES 2 3 RZ)
 set(WarpX_DIMS 3 CACHE STRING "Simulation dimensionality (2/3/RZ)")
@@ -56,8 +58,8 @@ if(NOT WarpX_DIMS IN_LIST WarpX_DIMS_VALUES)
     message(FATAL_ERROR "WarpX_DIMS (${WarpX_DIMS}) must be one of ${WarpX_DIMS_VALUES}")
 endif()
 
-set(WarpX_PRECISION_VALUES double single)
-set(WarpX_PRECISION double CACHE STRING "Floating point precision (single/double)")
+set(WarpX_PRECISION_VALUES SINGLE DOUBLE)
+set(WarpX_PRECISION DOUBLE CACHE STRING "Floating point precision (SINGLE/DOUBLE)")
 set_property(CACHE WarpX_PRECISION PROPERTY STRINGS ${WarpX_PRECISION_VALUES})
 if(NOT WarpX_PRECISION IN_LIST WarpX_PRECISION_VALUES)
     message(FATAL_ERROR "WarpX_PRECISION (${WarpX_PRECISION}) must be one of ${WarpX_PRECISION_VALUES}")
@@ -67,7 +69,7 @@ set(WarpX_COMPUTE_VALUES NOACC OMP CUDA DPCPP HIP)
 set(WarpX_COMPUTE OMP CACHE STRING "On-node, accelerated computing backend (NOACC/OMP/CUDA/DPCPP/HIP)")
 set_property(CACHE WarpX_COMPUTE PROPERTY STRINGS ${WarpX_COMPUTE_VALUES})
 if(NOT WarpX_COMPUTE IN_LIST WarpX_COMPUTE_VALUES)
-    message(FATAL_ERROR "WarpX_PRECISION (${WarpX_COMPUTE}) must be one of ${WarpX_COMPUTE_VALUES}")
+    message(FATAL_ERROR "WarpX_COMPUTE (${WarpX_COMPUTE}) must be one of ${WarpX_COMPUTE_VALUES}")
 endif()
 
 option(WarpX_MPI_THREAD_MULTIPLE "MPI thread-multiple support, i.e. for async_io" ON)
@@ -106,9 +108,9 @@ include(${WarpX_SOURCE_DIR}/cmake/dependencies/openPMD.cmake)
 # PSATD
 if(WarpX_PSATD)
     # FFTW (non-GPU) and cuFFT (GPU)
-    if(NOT ENABLE_CUDA)
+    if(NOT AMReX_CUDA)
         find_package(PkgConfig REQUIRED QUIET)
-        if(WarpX_PRECISION STREQUAL "double")
+        if(WarpX_PRECISION STREQUAL "DOUBLE")
             pkg_check_modules(fftw3 REQUIRED IMPORTED_TARGET fftw3)
         else()
             pkg_check_modules(fftw3f REQUIRED IMPORTED_TARGET fftw3f)
@@ -126,25 +128,57 @@ endif()
 
 # Targets #####################################################################
 #
-# executable
-add_executable(WarpX)
-add_executable(WarpX::WarpX ALIAS WarpX)
+if(NOT WarpX_APP AND NOT WarpX_LIB)
+    message(FATAL_ERROR "Need to build at least WarpX app or "
+                        "library/Python bindings")
+endif()
+
+# collect all objects for compilation
+add_library(WarpX OBJECT)
+set(_ALL_TARGETS WarpX)
+
+# executable application
+#   note: we currently avoid a dependency on a core library
+#         for simpler usage, but could make this an option
+if(WarpX_APP)
+    add_executable(app)
+    add_executable(WarpX::app ALIAS app)
+    target_link_libraries(app PRIVATE WarpX)
+    set(_BUILDINFO_SRC app)
+    list(APPEND _ALL_TARGETS app)
+endif()
+
+# link into a shared library
+if(WarpX_LIB)
+    add_library(shared MODULE)
+    add_library(WarpX::shared ALIAS shared)
+    target_link_libraries(shared PUBLIC WarpX)
+    set(_BUILDINFO_SRC shared)
+    list(APPEND _ALL_TARGETS shared)
+
+    set_target_properties(WarpX shared PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+    )
+endif()
 
 # own headers
-target_include_directories(WarpX PRIVATE
+target_include_directories(WarpX PUBLIC
     $<BUILD_INTERFACE:${WarpX_SOURCE_DIR}/Source>
 )
 
 # if we include <AMReX_buildInfo.H> we will need to call:
 include(AMReXBuildInfo)
-generate_buildinfo(WarpX "${WarpX_SOURCE_DIR}")
+generate_buildinfo(${_BUILDINFO_SRC} "${WarpX_SOURCE_DIR}")
+target_link_libraries(WarpX PRIVATE buildInfo::${_BUILDINFO_SRC})
+unset(_BUILDINFO_SRC)
 
 # add sources
-target_sources(WarpX
-  PRIVATE
-    Source/main.cpp
-    Source/WarpX.cpp
-)
+target_sources(WarpX PRIVATE Source/WarpX.cpp)
+if(WarpX_APP)
+    target_sources(app PRIVATE Source/main.cpp)
+endif()
+
 add_subdirectory(Source/BoundaryConditions)
 add_subdirectory(Source/Diagnostics)
 add_subdirectory(Source/Evolve)
@@ -155,12 +189,14 @@ add_subdirectory(Source/Laser)
 add_subdirectory(Source/Parallelization)
 add_subdirectory(Source/Parser)
 add_subdirectory(Source/Particles)
-#add_subdirectory(Source/Python)
+add_subdirectory(Source/Python)
 add_subdirectory(Source/Utils)
 
 # C++ properties: at least a C++14 capable compiler is needed
-target_compile_features(WarpX PUBLIC cxx_std_14)
-set_target_properties(WarpX PROPERTIES
+foreach(warpx_tgt IN LISTS _ALL_TARGETS)
+    target_compile_features(${warpx_tgt} PUBLIC cxx_std_14)
+endforeach()
+set_target_properties(${_ALL_TARGETS} PROPERTIES
     CXX_EXTENSIONS OFF
     CXX_STANDARD_REQUIRED ON
 )
@@ -169,11 +205,11 @@ set_target_properties(WarpX PROPERTIES
 target_link_libraries(WarpX PUBLIC WarpX::thirdparty::AMReX)
 
 if(WarpX_PSATD)
-    if(ENABLE_CUDA)
+    if(AMReX_CUDA)
         # CUDA_ADD_CUFFT_TO_TARGET(WarpX)
         target_link_libraries(WarpX PUBLIC cufft)
     else()
-        if(WarpX_PRECISION STREQUAL "double")
+        if(WarpX_PRECISION STREQUAL "DOUBLE")
             target_link_libraries(WarpX PUBLIC PkgConfig::fftw3)
         else()
             target_link_libraries(WarpX PUBLIC PkgConfig::fftw3f)
@@ -198,11 +234,16 @@ if(WarpX_QED)
 endif()
 
 # AMReX helper function: propagate CUDA specific target & source properties
-if(ENABLE_CUDA)
+if(AMReX_CUDA)
     setup_target_for_cuda_compilation(WarpX)
+    foreach(warpx_tgt IN LISTS _ALL_TARGETS)
+        setup_target_for_cuda_compilation(${warpx_tgt})
+    endforeach()
     if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.17)
-        target_compile_features(WarpX PUBLIC cuda_std_14)
-        set_target_properties(WarpX PROPERTIES
+        foreach(warpx_tgt IN LISTS _ALL_TARGETS)
+            target_compile_features(${warpx_tgt} PUBLIC cuda_std_14)
+        endforeach()
+        set_target_properties(${_ALL_TARGETS} PROPERTIES
             CUDA_EXTENSIONS OFF
             CUDA_STANDARD_REQUIRED ON
         )
@@ -216,30 +257,37 @@ set_warpx_binary_name()
 # Defines #####################################################################
 #
 if(WarpX_DIMS STREQUAL 3)
-    target_compile_definitions(WarpX PRIVATE WARPX_DIM_3D)
+    target_compile_definitions(WarpX PUBLIC WARPX_DIM_3D)
 elseif(WarpX_DIMS STREQUAL 2)
-    target_compile_definitions(WarpX PRIVATE WARPX_DIM_XZ)
+    target_compile_definitions(WarpX PUBLIC WARPX_DIM_XZ)
 elseif(WarpX_DIMS STREQUAL RZ)
-    target_compile_definitions(WarpX PRIVATE WARPX_DIM_RZ)
+    target_compile_definitions(WarpX PUBLIC WARPX_DIM_RZ)
 endif()
 
 if(WarpX_OPENPMD)
-    target_compile_definitions(WarpX PRIVATE WARPX_USE_OPENPMD)
+    target_compile_definitions(WarpX PUBLIC WARPX_USE_OPENPMD)
 endif()
 
 if(WarpX_QED)
-    target_compile_definitions(WarpX PRIVATE WARPX_QED)
+    target_compile_definitions(WarpX PUBLIC WARPX_QED)
     if(WarpX_QED_TABLE_GEN)
-        target_compile_definitions(WarpX PRIVATE WarpX_QED_TABLE_GEN)
+        target_compile_definitions(WarpX PUBLIC WarpX_QED_TABLE_GEN)
     endif()
 endif()
 
 if(WarpX_PSATD)
-    target_compile_definitions(WarpX PRIVATE WARPX_USE_PSATD)
+    target_compile_definitions(WarpX PUBLIC WARPX_USE_PSATD)
 endif()
 
-target_compile_definitions(WarpX PRIVATE
+target_compile_definitions(WarpX PUBLIC
     WARPX_PARSER_DEPTH=${WarpX_PARSER_DEPTH})
+
+# <cmath>: M_PI
+# <unistd.h>: parser
+if(WIN32)
+    target_compile_definitions(WarpX PRIVATE _USE_MATH_DEFINES)
+    target_compile_definitions(WarpX PRIVATE YY_NO_UNISTD_H)
+endif()
 
 
 # Warnings ####################################################################
@@ -262,7 +310,13 @@ set_cxx_warnings()
 # Installs ####################################################################
 #
 # headers, libraries and executables
-set(WarpX_INSTALL_TARGET_NAMES WarpX)
+set(WarpX_INSTALL_TARGET_NAMES)
+if(WarpX_APP)
+    list(APPEND WarpX_INSTALL_TARGET_NAMES app)
+endif()
+if(WarpX_LIB)
+    list(APPEND WarpX_INSTALL_TARGET_NAMES shared)
+endif()
 
 install(TARGETS ${WarpX_INSTALL_TARGET_NAMES}
     EXPORT WarpXTargets

@@ -77,7 +77,7 @@ struct IonizationFilterFunc
         if (ion_lev < m_atomic_number)
         {
             constexpr amrex::Real c = PhysConst::c;
-            constexpr amrex::Real c2_inv = 1./c/c;
+            constexpr amrex::Real c2_inv = amrex::Real(1.)/c/c;
 
             // gather E and B
             amrex::ParticleReal xp, yp, zp;
@@ -129,7 +129,9 @@ struct IonizationTransformFunc
 {
     template <typename DstData, typename SrcData>
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-    void operator() (DstData& /*dst*/, SrcData& src, int i_src, int /*i_dst*/) const noexcept
+    void operator() (DstData& /*dst*/, SrcData& src,
+        int i_src, int /*i_dst*/,
+        amrex::RandomEngine const& /*engine*/) const noexcept
     {
         src.m_runtime_idata[0][i_src] += 1;
     }
