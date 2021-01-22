@@ -52,7 +52,7 @@
 #include <AMReX_Interpolater.H>
 #include <AMReX_FillPatchUtil.H>
 
-#ifdef _OPENMP
+#ifdef AMREX_USE_OMP
 #   include <omp.h>
 #endif
 
@@ -689,6 +689,9 @@ private:
 
     void InitNCICorrector ();
 
+    /** Check the requested resources and write performance hints */
+    void PerformanceHints ();
+
     std::unique_ptr<amrex::MultiFab> GetCellCenteredData();
 
     void BuildBufferMasks ();
@@ -788,7 +791,7 @@ private:
 
 
     // Load balancing
-    /** Load balancing intervals that reads the "load_balance_int" string int the input file
+    /** Load balancing intervals that reads the "load_balance_intervals" string int the input file
      * for getting steps at which load balancing is performed */
     IntervalsParser load_balance_intervals;
     /** Collection of LayoutData to keep track of weights used in load balancing
