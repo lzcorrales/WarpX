@@ -45,9 +45,9 @@ amr.blocking_factor = 64
 warpx.do_dynamic_scheduling = 0
 
 # load balancing
-warpx.load_balance_intervals = 10
-warpx.load_balance_with_sfc = 0
-#warpx.load_balance_efficiency_ratio_threshold = 1.1
+algo.load_balance_intervals = 10
+algo.load_balance_with_sfc = 0
+#algo.load_balance_efficiency_ratio_threshold = 1.1
 algo.load_balance_costs_update = Heuristic
 #algo.costs_heuristic_particles_wt = 0.9
 #algo.costs_heuristic_cells_wt = 0.1
@@ -214,8 +214,10 @@ openPMDbw.hydrogen.plot_filter_function(t,x,y,z,ux,uy,uz) = (uz<0)
 # Reduced Diagnostics
 #
 
-# histograms
-warpx.reduced_diags_names                   = histuH histue
+# histograms with 2.0 degree acceptance angle in fw direction
+# 2 deg * pi / 180 : 0.03490658503 rad
+# half-angle +/-   : 0.017453292515 rad
+warpx.reduced_diags_names                   = histuH histue histuzAll
 
 histuH.type                                 = ParticleHistogram
 histuH.intervals                            = 100
@@ -225,6 +227,7 @@ histuH.bin_number                           = 1000
 histuH.bin_min                              =  0.0
 histuH.bin_max                              = 35.0
 histuH.histogram_function(t,x,y,z,ux,uy,uz) = "sqrt(ux*ux+uy*uy+uz*uz)"
+histuH.filter_function(t,x,y,z,ux,uy,uz) = "abs(acos(uz / sqrt(ux*ux+uy*uy+uz*uz))) <= 0.017453"
 
 histue.type                                 = ParticleHistogram
 histue.intervals                            = 100
@@ -234,6 +237,18 @@ histue.bin_number                           = 1000
 histue.bin_min                              = 0.0
 histue.bin_max                              = 0.1
 histue.histogram_function(t,x,y,z,ux,uy,uz) = "sqrt(ux*ux+uy*uy+uz*uz)"
+histue.filter_function(t,x,y,z,ux,uy,uz) = "abs(acos(uz / sqrt(ux*ux+uy*uy+uz*uz))) <= 0.017453"
+
+# just a test entry to make sure that the histogram filter is purely optional:
+# this one just records uz of all hydrogen ions, independent of their pointing
+histuzAll.type                                 = ParticleHistogram
+histuzAll.intervals                            = 100
+histuzAll.path                                 = "./"
+histuzAll.species                              = hydrogen
+histuzAll.bin_number                           = 1000
+histuzAll.bin_min                              = -35.0
+histuzAll.bin_max                              =  35.0
+histuzAll.histogram_function(t,x,y,z,ux,uy,uz) = "uz"
 
 
 #################################

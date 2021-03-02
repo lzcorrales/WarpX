@@ -173,20 +173,29 @@ function(set_warpx_binary_name)
             set_property(TARGET ${tgt} APPEND_STRING PROPERTY OUTPUT_NAME ".PSATD")
         endif()
 
+        if(WarpX_EB)
+            set_property(TARGET ${tgt} APPEND_STRING PROPERTY OUTPUT_NAME ".EB")
+        endif()
+
         if(WarpX_QED)
             set_property(TARGET ${tgt} APPEND_STRING PROPERTY OUTPUT_NAME ".QED")
         endif()
+
+        if(WarpX_QED_TABLE_GEN)
+            set_property(TARGET ${tgt} APPEND_STRING PROPERTY OUTPUT_NAME ".GENQEDTABLES")
+        endif()
+
 
         if(CMAKE_BUILD_TYPE MATCHES "Debug")
             set_property(TARGET ${tgt} APPEND_STRING PROPERTY OUTPUT_NAME ".DEBUG")
         endif()
     endforeach()
-    
+
     if(WarpX_APP)
         # alias to the latest build, because using the full name is often confusing
         add_custom_command(TARGET app POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E create_symlink
-                $<TARGET_FILE:app>
+                $<TARGET_FILE_NAME:app>
                 ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/warpx
         )
     endif()
@@ -200,14 +209,14 @@ function(set_warpx_binary_name)
             set(lib_suffix "rz")
         endif()
         if(WIN32)
-            set(mod_ext "pyd")
+            set(mod_ext "dll")
         else()
             set(mod_ext "so")
         endif()
         add_custom_command(TARGET shared POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E create_symlink
-                $<TARGET_FILE:shared>
-                ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libwarpx${lib_suffix}.${mod_ext}
+                $<TARGET_FILE_NAME:shared>
+                ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libwarpx.${lib_suffix}.${mod_ext}
         )
     endif()
 endfunction()
@@ -272,6 +281,7 @@ function(warpx_print_summary)
     message("    ASCENT: ${WarpX_ASCENT}")
     message("    COMPUTE: ${WarpX_COMPUTE}")
     message("    DIMS: ${WarpX_DIMS}")
+    message("    Embedded Boundary: ${WarpX_EB}")
     message("    LIB: ${WarpX_LIB}")
     message("    MPI: ${WarpX_MPI}")
     if(MPI)
@@ -282,5 +292,6 @@ function(warpx_print_summary)
     message("    PRECISION: ${WarpX_PRECISION}")
     message("    OPENPMD: ${WarpX_OPENPMD}")
     message("    QED: ${WarpX_QED}")
+    message("    QED table generation: ${WarpX_QED_TABLE_GEN}")
     message("")
 endfunction()

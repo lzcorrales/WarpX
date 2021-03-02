@@ -3,6 +3,7 @@
 #include "Utils/Interpolate.H"
 #include "Particles/Filter/FilterFunctors.H"
 
+#include <AMReX_AmrParticles.H>
 #include <AMReX_buildInfo.H>
 
 using namespace amrex;
@@ -20,7 +21,9 @@ FlushFormatPlotfile::WriteToFile (
     const amrex::Vector<int> iteration, const double time,
     const amrex::Vector<ParticleDiag>& particle_diags, int nlev,
     const std::string prefix, bool plot_raw_fields,
-    bool plot_raw_fields_guards, bool plot_raw_rho, bool plot_raw_F) const
+    bool plot_raw_fields_guards, bool plot_raw_rho, bool plot_raw_F,
+    bool /*isBTD*/, int /*snapshotID*/, const amrex::Geometry& /*full_BTD_snapshot*/,
+    bool /*isLastBTDFlush*/) const
 {
     WARPX_PROFILE("FlushFormatPlotfile::WriteToFile()");
     auto & warpx = WarpX::GetInstance();
@@ -48,7 +51,7 @@ FlushFormatPlotfile::WriteToFile (
 
     WriteJobInfo(filename);
 
-    WriteWarpXHeader(filename, particle_diags);
+    WriteWarpXHeader(filename, particle_diags, geom);
 
     VisMF::SetHeaderVersion(current_version);
 }
@@ -178,7 +181,8 @@ FlushFormatPlotfile::WriteJobInfo(const std::string& dir) const
 void
 FlushFormatPlotfile::WriteWarpXHeader(
     const std::string& name,
-    const amrex::Vector<ParticleDiag>& particle_diags) const
+    const amrex::Vector<ParticleDiag>& particle_diags,
+    amrex::Vector<amrex::Geometry>& geom) const
 {
     auto & warpx = WarpX::GetInstance();
     if (ParallelDescriptor::IOProcessor())
@@ -231,11 +235,11 @@ FlushFormatPlotfile::WriteWarpXHeader(
 
         // Geometry
         for (int i = 0; i < AMREX_SPACEDIM; ++i) {
-            HeaderFile << warpx.Geom(0).ProbLo(i) << ' ';
+            HeaderFile << geom[0].ProbLo(i) << ' ';
         }
         HeaderFile << '\n';
         for (int i = 0; i < AMREX_SPACEDIM; ++i) {
-            HeaderFile << warpx.Geom(0).ProbHi(i) << ' ';
+            HeaderFile << geom[0].ProbHi(i) << ' ';
         }
         HeaderFile << '\n';
 
@@ -268,7 +272,8 @@ FlushFormatPlotfile::WriteParticles(const std::string& dir,
 
     for (unsigned i = 0, n = particle_diags.size(); i < n; ++i) {
         WarpXParticleContainer* pc = particle_diags[i].getParticleContainer();
-        PhysicalParticleContainer tmp(&WarpX::GetInstance());
+        amrex::AmrParticleContainer<0, 0, PIdx::nattribs, 0, amrex::PinnedArenaAllocator>
+            tmp(&WarpX::GetInstance());
         Vector<std::string> real_names;
         Vector<std::string> int_names;
         Vector<int> int_flags;

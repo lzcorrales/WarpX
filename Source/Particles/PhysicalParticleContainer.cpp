@@ -23,6 +23,7 @@
 #include "Particles/Gather/GetExternalFields.H"
 #include "Utils/WarpXAlgorithmSelection.H"
 
+#include <AMReX_Geometry.H>
 #include <AMReX_Print.H>
 #include <AMReX.H>
 
@@ -146,43 +147,31 @@ PhysicalParticleContainer::PhysicalParticleContainer (AmrCore* amr_core, int isp
     //_____________________________
 
 #ifdef WARPX_QED
-    pp.query("do_qed", m_do_qed);
-    if(m_do_qed){
-        //If do_qed is enabled, find out if Quantum Synchrotron process is enabled
-        pp.query("do_qed_quantum_sync", m_do_qed_quantum_sync);
-        if (m_do_qed_quantum_sync)
-            AddRealComp("optical_depth_QSR");
-        pp.query("do_qed_breit_wheeler", m_do_qed_breit_wheeler);
-        if (m_do_qed_breit_wheeler)
-            AddRealComp("optical_depth_BW");
-    }
+    pp.query("do_qed_quantum_sync", m_do_qed_quantum_sync);
+    if (m_do_qed_quantum_sync)
+        AddRealComp("optical_depth_QSR");
+
+    pp.query("do_qed_breit_wheeler", m_do_qed_breit_wheeler);
+    if (m_do_qed_breit_wheeler)
+        AddRealComp("optical_depth_BW");
 
     if(m_do_qed_quantum_sync){
         pp.get("qed_quantum_sync_phot_product_species",
             m_qed_quantum_sync_phot_product_name);
     }
-
-
 #endif
 
-    // Parse galilean velocity
-    ParmParse ppsatd("psatd");
-    ppsatd.query("v_galilean", m_v_galilean);
-    // Scale the velocity by the speed of light
-    for (int i=0; i<3; i++) m_v_galilean[i] *= PhysConst::c;
-
-    // build filter functors
-    m_do_random_filter  = queryWithParser(pp, "random_fraction", m_random_fraction);
-    m_do_uniform_filter = pp.query("uniform_stride",  m_uniform_stride);
-    std::string buf;
-    m_do_parser_filter  = pp.query("plot_filter_function(t,x,y,z,ux,uy,uz)", buf);
-    if (m_do_parser_filter) {
-        std::string function_string = "";
-        Store_parserString(pp,"plot_filter_function(t,x,y,z,ux,uy,uz)",
-                           function_string);
-        m_particle_filter_parser = std::make_unique<ParserWrapper<7>>(
-            makeParser(function_string,{"t","x","y","z","ux","uy","uz"}));
+    // Get Galilean velocity
+    ParmParse pp_psatd("psatd");
+    bool use_default_v_galilean = false;
+    pp_psatd.query("use_default_v_galilean", use_default_v_galilean);
+    if (use_default_v_galilean) {
+        m_v_galilean[2] = -std::sqrt(1._rt - 1._rt / (WarpX::gamma_boost * WarpX::gamma_boost));
+    } else {
+        pp_psatd.query("v_galilean", m_v_galilean);
     }
+    // Scale the Galilean velocity by the speed of light
+    for (int i=0; i<3; i++) m_v_galilean[i] *= PhysConst::c;
 
 }
 
@@ -491,6 +480,18 @@ PhysicalParticleContainer::AddParticles (int lev)
                       &(plasma_injector->single_particle_vel[1]),
                       &(plasma_injector->single_particle_vel[2]),
                       1, &(plasma_injector->single_particle_weight), 0);
+        return;
+    }
+
+    if (plasma_injector->add_multiple_particles) {
+        AddNParticles(lev, plasma_injector->multiple_particles_pos_x.size(),
+                      plasma_injector->multiple_particles_pos_x.dataPtr(),
+                      plasma_injector->multiple_particles_pos_y.dataPtr(),
+                      plasma_injector->multiple_particles_pos_z.dataPtr(),
+                      plasma_injector->multiple_particles_vel_x.dataPtr(),
+                      plasma_injector->multiple_particles_vel_y.dataPtr(),
+                      plasma_injector->multiple_particles_vel_z.dataPtr(),
+                      1, plasma_injector->multiple_particles_weight.dataPtr(), 0);
         return;
     }
 
@@ -1569,10 +1570,6 @@ PhysicalParticleContainer::GetParticleSlice (
     const Real z_min = z_new - base_dx[direction];
     const Real z_max = z_old + base_dx[direction];
 
-    RealBox slice_box = Geom(0).ProbDomain();
-    slice_box.setLo(direction, z_min);
-    slice_box.setHi(direction, z_max);
-
     diagnostic_particles.resize(finestLevel()+1);
 
     for (int lev = 0; lev < nlevs; ++lev) {
@@ -1603,9 +1600,6 @@ PhysicalParticleContainer::GetParticleSlice (
             {
                 const Box& box = pti.validbox();
                 auto index = std::make_pair(pti.index(), pti.LocalTileIndex());
-                const RealBox tile_real_box(box, dx, plo);
-
-                if ( !slice_box.intersects(tile_real_box) ) continue;
 
                 const auto GetPosition = GetParticlePosition(pti);
 

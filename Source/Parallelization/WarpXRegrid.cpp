@@ -90,11 +90,15 @@ WarpX::LoadBalance ()
             }
 
             RemakeLevel(lev, t_new[lev], boxArray(lev), newdm);
+
+            // Record the load balance efficiency
+            WarpX::setLoadBalanceEfficiency(lev, proposedEfficiency);
         }
     }
     if (doLoadBalance)
     {
         mypc->Redistribute();
+        mypc->defineAllParticleTiles();
     }
 #endif
 }
@@ -106,6 +110,14 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
     if (ba == boxArray(lev))
     {
         if (ParallelDescriptor::NProcs() == 1) return;
+
+#ifdef AMREX_USE_EB
+        m_field_factory[lev] = amrex::makeEBFabFactory(Geom(lev), ba, dm,
+                                                       {1,1,1}, // Not clear how many ghost cells we need yet
+                                                       amrex::EBSupport::full);
+#else
+        m_field_factory[lev] = std::make_unique<FArrayBoxFactory>();
+#endif
 
         // Fine patch
         for (int idim=0; idim < 3; ++idim)
@@ -286,6 +298,7 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
             for (int i : costs[lev]->IndexArray())
             {
                 (*costs[lev])[i] = 0.0;
+                WarpX::setLoadBalanceEfficiency(lev, -1);
             }
         }
 
@@ -336,6 +349,7 @@ WarpX::ResetCosts ()
     {
         for (int i : costs[lev]->IndexArray())
         {
+            // Reset costs
             (*costs[lev])[i] = 0.0;
         }
     }

@@ -45,6 +45,7 @@
 #include <AMReX_AmrCore.H>
 #include <AMReX_BLProfiler.H>
 #include <AMReX_Print.H>
+#include <AMReX_Geometry.H>
 #include <AMReX_RealVect.H>
 #include <AMReX_iMultiFab.H>
 #include <AMReX_VisMF.H>
@@ -258,12 +259,27 @@ public:
     /** get low-high-low-high-... vector for each direction indicating if mother grid PMLs are enabled */
     std::vector<bool> getPMLdirections() const;
 
-    static amrex::LayoutData<amrex::Real>* getCosts (int lev) {
-        if (m_instance) {
-            return m_instance->costs[lev].get();
+    static amrex::LayoutData<amrex::Real>* getCosts (int lev);
+
+    void setLoadBalanceEfficiency (const int lev, const amrex::Real efficiency)
+    {
+        if (m_instance)
+        {
+            m_instance->load_balance_efficiency[lev] = efficiency;
         } else
         {
-            return nullptr;
+            return;
+        }
+    }
+
+    amrex::Real getLoadBalanceEfficiency (const int lev)
+    {
+        if (m_instance)
+        {
+            return m_instance->load_balance_efficiency[lev];
+        } else
+        {
+            return -1;
         }
     }
 
@@ -377,6 +393,21 @@ public:
     void DampJPML (int lev, PatchType patch_type);
 
     void CopyJPML ();
+
+    /**
+     * \brief Synchronize the nodal points of the PML MultiFabs
+     */
+    void NodalSyncPML ();
+
+    /**
+     * \brief Synchronize the nodal points of the PML MultiFabs for given MR level
+     */
+    void NodalSyncPML (int lev);
+
+    /**
+     * \brief Synchronize the nodal points of the PML MultiFabs for given MR level and patch
+     */
+    void NodalSyncPML (int lev, PatchType patch_type);
 
     PML* GetPML (int lev);
 
@@ -520,6 +551,17 @@ public:
                      std::array<amrex::Real, 3> const beta = {{0,0,0}},
                      amrex::Real const required_precision=amrex::Real(1.e-11),
                      const int max_iters=200) const;
+    void computePhiRZ (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
+                       amrex::Vector<std::unique_ptr<amrex::MultiFab> >& phi,
+                       std::array<amrex::Real, 3> const beta,
+                       amrex::Real const required_precision,
+                       int const max_iters) const;
+    void computePhiCartesian (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
+                       amrex::Vector<std::unique_ptr<amrex::MultiFab> >& phi,
+                       std::array<amrex::Real, 3> const beta,
+                       amrex::Real const required_precision,
+                       int const max_iters) const;
+
     void computeE (amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3> >& E,
                    const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& phi,
                    std::array<amrex::Real, 3> const beta = {{0,0,0}} ) const;
@@ -557,6 +599,16 @@ public:
     void ComputeCostsHeuristic (amrex::Vector<std::unique_ptr<amrex::LayoutData<amrex::Real> > >& costs);
 
     void ApplyFilterandSumBoundaryRho (int lev, int glev, amrex::MultiFab& rho, int icomp, int ncomp);
+
+#ifdef WARPX_USE_PSATD
+    // Host and device vectors for ordered Fornberg stencil coefficients used for finite-order centering
+    amrex::Vector<amrex::Real> host_centering_stencil_coeffs_x;
+    amrex::Vector<amrex::Real> host_centering_stencil_coeffs_y;
+    amrex::Vector<amrex::Real> host_centering_stencil_coeffs_z;
+    amrex::Gpu::DeviceVector<amrex::Real> device_centering_stencil_coeffs_x;
+    amrex::Gpu::DeviceVector<amrex::Real> device_centering_stencil_coeffs_y;
+    amrex::Gpu::DeviceVector<amrex::Real> device_centering_stencil_coeffs_z;
+#endif
 
 protected:
 
@@ -704,6 +756,10 @@ private:
         return gather_buffer_masks[lev].get();
     }
 
+    void ReorderFornbergCoefficients(amrex::Vector<amrex::Real>& ordered_coeffs,
+                                     amrex::Vector<amrex::Real>& unordered_coeffs,
+                                     const int order);
+
     void AllocLevelMFs (int lev, const amrex::BoxArray& ba, const amrex::DistributionMapping& dm,
                         const amrex::IntVect& ngE, const amrex::IntVect& ngJ,
                         const amrex::IntVect& ngRho, const amrex::IntVect& ngF,
@@ -810,6 +866,8 @@ private:
      * distribution mapping efficiency is larger than the threshold; 'efficiency'
      * here means the average cost per MPI rank.  */
     amrex::Real load_balance_efficiency_ratio_threshold = amrex::Real(1.1);
+    /** Current load balance efficiency for each level.  */
+    amrex::Vector<amrex::Real> load_balance_efficiency;
     /** Weight factor for cells in `Heuristic` costs update.
      * Default values on GPU are determined from single-GPU tests on Summit.
      * The problem setup for these tests is an empty (i.e. no particles) domain
@@ -876,6 +934,24 @@ private:
 
     // Domain decomposition on Level 0
     amrex::IntVect numprocs{0};
+
+    //
+    // Embeded Boundary
+    //
+
+    // Factory for field data
+    amrex::Vector<std::unique_ptr<amrex::FabFactory<amrex::FArrayBox> > > m_field_factory;
+
+    amrex::FabFactory<amrex::FArrayBox> const& fieldFactory (int lev) const noexcept {
+        return *m_field_factory[lev];
+    }
+#ifdef AMREX_USE_EB
+    amrex::EBFArrayBoxFactory const& fieldEBFactory (int lev) const noexcept {
+        return static_cast<amrex::EBFArrayBoxFactory const&>(*m_field_factory[lev]);
+    }
+#endif
+
+    void InitEB ();
 
 private:
     // void EvolvePSATD (int numsteps);
