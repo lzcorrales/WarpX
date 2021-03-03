@@ -47,7 +47,7 @@ WarpX::LoadBalance ()
         // normalized to max cost) for current and proposed distribution mappings
         amrex::Real currentEfficiency = 0.0;
         amrex::Real proposedEfficiency = 0.0;
-
+        amrex::Print() << " load balance with sfc : " << load_balance_with_sfc << "\n";
         newdm = (load_balance_with_sfc)
             ? DistributionMapping::makeSFC(*costs[lev],
                                            currentEfficiency, proposedEfficiency,
