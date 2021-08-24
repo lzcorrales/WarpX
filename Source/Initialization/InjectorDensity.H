@@ -9,12 +9,18 @@
 #ifndef INJECTOR_DENSITY_H_
 #define INJECTOR_DENSITY_H_
 
-#include "Parser/GpuParser.H"
 #include "CustomDensityProb.H"
 #include "Utils/WarpXConst.H"
 
-#include <AMReX_Gpu.H>
-#include <AMReX_Dim3.H>
+#include <AMReX.H>
+#include <AMReX_Array.H>
+#include <AMReX_GpuQualifiers.H>
+#include <AMReX_Math.H>
+#include <AMReX_Parser.H>
+#include <AMReX_REAL.H>
+
+#include <cmath>
+#include <string>
 
 // struct whose getDensity returns constant density.
 struct InjectorDensityConstant
@@ -35,7 +41,7 @@ private:
 // struct whose getDensity returns local density computed from parser.
 struct InjectorDensityParser
 {
-    InjectorDensityParser (WarpXParser const& a_parser, amrex::Real cs, bool cc) noexcept
+    InjectorDensityParser (amrex::ParserExecutor<3> const& a_parser, amrex::Real cs, bool cc) noexcept
         : m_parser(a_parser), cellSize(cs), cellCentered(cc) {}
 
     AMREX_GPU_HOST_DEVICE
@@ -59,7 +65,7 @@ struct InjectorDensityParser
     }
 
     // InjectorDensityParser constructs this GpuParser from WarpXParser.
-    GpuParser<3> m_parser;
+    amrex::ParserExecutor<3> m_parser;
 private:
     amrex::Real cellSize;
     bool cellCentered;
@@ -145,7 +151,7 @@ struct InjectorDensity
     { }
 
     // This constructor stores a InjectorDensityParser in union object.
-    InjectorDensity (InjectorDensityParser* t, WarpXParser const& a_parser, amrex::Real cs, bool cc)
+    InjectorDensity (InjectorDensityParser* t, amrex::ParserExecutor<3> const& a_parser, amrex::Real cs, bool cc)
         : type(Type::parser),
           object(t,a_parser, cs, cc)
     { }
@@ -212,7 +218,7 @@ private:
     union Object {
         Object (InjectorDensityConstant*, amrex::Real a_rho) noexcept
             : constant(a_rho) {}
-        Object (InjectorDensityParser*, WarpXParser const& a_parser, amrex::Real cs, bool cc) noexcept
+        Object (InjectorDensityParser*, amrex::ParserExecutor<3> const& a_parser, amrex::Real cs, bool cc) noexcept
             : parser(a_parser, cs, cc) {}
         Object (InjectorDensityCustom*, std::string const& a_species_name) noexcept
             : custom(a_species_name) {}
