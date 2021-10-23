@@ -454,6 +454,7 @@ PlasmaInjector::~PlasmaInjector ()
 // InjectorPosition[Constant or Custom or etc.].getDensity.
 void PlasmaInjector::parseDensity (amrex::ParmParse& pp)
 {
+    using namespace amrex;
     // parse density information
     std::string rho_prof_s;
     pp.get("profile", rho_prof_s);
@@ -501,6 +502,7 @@ void PlasmaInjector::parseDensity (amrex::ParmParse& pp)
 void PlasmaInjector::parseMomentum (amrex::ParmParse& pp)
 {
     using namespace amrex::literals;
+    using namespace amrex;
 
     // parse momentum information
     std::string mom_dist_s;
