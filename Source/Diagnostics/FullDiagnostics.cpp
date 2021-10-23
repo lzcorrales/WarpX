@@ -54,7 +54,13 @@ FullDiagnostics::InitializeParticleBuffer ()
 
     const MultiParticleContainer& mpc = warpx.GetPartContainer();
     // If not specified, dump all species
-    if (m_output_species_names.empty()) m_output_species_names = mpc.GetSpeciesNames();
+    if (m_output_species_names.empty()) {
+        if (m_format == "checkpoint") {
+            m_output_species_names = mpc.GetSpeciesAndLasersNames();
+        } else {
+            m_output_species_names = mpc.GetSpeciesNames();
+        }
+    }
     // Initialize one ParticleDiag per species requested
     for (auto const& species : m_output_species_names){
         const int idx = mpc.getSpeciesID(species);
@@ -78,7 +84,6 @@ FullDiagnostics::ReadParameters ()
     m_intervals = IntervalsParser(intervals_string_vec);
     bool raw_specified = pp_diag_name.query("plot_raw_fields", m_plot_raw_fields);
     raw_specified += pp_diag_name.query("plot_raw_fields_guards", m_plot_raw_fields_guards);
-    raw_specified += pp_diag_name.query("plot_raw_rho", m_plot_raw_rho);
 
 #ifdef WARPX_DIM_RZ
     pp_diag_name.query("dump_rz_modes", m_dump_rz_modes);
@@ -119,7 +124,7 @@ FullDiagnostics::Flush ( int i_buffer )
     m_flush_format->WriteToFile(
         m_varnames, m_mf_output[i_buffer], m_geom_output[i_buffer], warpx.getistep(),
         warpx.gett_new(0), m_output_species, nlev_output, m_file_prefix, m_file_min_digits,
-        m_plot_raw_fields, m_plot_raw_fields_guards, m_plot_raw_rho, m_plot_raw_F);
+        m_plot_raw_fields, m_plot_raw_fields_guards);
 
     FlushRaw();
 }
@@ -235,7 +240,7 @@ FullDiagnostics::AddRZModesToDiags (int lev)
     }
     // rho
     if (rho_requested) {
-        m_all_field_functors[lev][icomp] = std::make_unique<RhoFunctor>(lev, m_crse_ratio, false, ncomp_multimodefab);
+        m_all_field_functors[lev][icomp] = std::make_unique<RhoFunctor>(lev, m_crse_ratio, -1, false, ncomp_multimodefab);
         icomp += 1;
         AddRZModesToOutputNames(std::string("rho"), ncomp_multimodefab);
     }

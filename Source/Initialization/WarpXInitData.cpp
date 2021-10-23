@@ -18,6 +18,7 @@
 #include "Filter/BilinearFilter.H"
 #include "Filter/NCIGodfreyFilter.H"
 #include "Particles/MultiParticleContainer.H"
+#include "Parallelization/WarpXCommUtil.H"
 #include "Utils/WarpXAlgorithmSelection.H"
 #include "Utils/WarpXConst.H"
 #include "Utils/WarpXProfilerWrapper.H"
@@ -61,7 +62,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-
+#include <sstream>
 
 using namespace amrex;
 
@@ -114,21 +115,16 @@ WarpX::InitData ()
     if (restart_chkfile.empty())
     {
         ComputeDt();
+        WarpX::PrintDtDxDyDz();
         InitFromScratch();
     }
     else
     {
         InitFromCheckpoint();
+        WarpX::PrintDtDxDyDz();
         PostRestart();
     }
 
-#ifdef AMREX_USE_EB
-    ComputeEdgeLengths();
-    ComputeFaceAreas();
-    ScaleEdges();
-    ScaleAreas();
-    ComputeDistanceToEB();
-#endif
     ComputeMaxStep();
 
     ComputePMLFactors();
@@ -185,11 +181,12 @@ WarpX::InitDiagnostics () {
         const Real* current_lo = geom[0].ProbLo();
         const Real* current_hi = geom[0].ProbHi();
         Real dt_boost = dt[0];
+        Real boosted_moving_window_v = (moving_window_v - beta_boost*PhysConst::c)/(1 - beta_boost*moving_window_v/PhysConst::c);
         // Find the positions of the lab-frame box that corresponds to the boosted-frame box at t=0
         Real zmin_lab = static_cast<Real>(
-            current_lo[moving_window_dir]/( (1.+beta_boost)*gamma_boost ));
+            (current_lo[moving_window_dir] - boosted_moving_window_v*t_new[0])/( (1.+beta_boost)*gamma_boost ));
         Real zmax_lab = static_cast<Real>(
-            current_hi[moving_window_dir]/( (1.+beta_boost)*gamma_boost ));
+            (current_hi[moving_window_dir] - boosted_moving_window_v*t_new[0])/( (1.+beta_boost)*gamma_boost ));
         myBFD = std::make_unique<BackTransformedDiagnostic>(
                                                zmin_lab,
                                                zmax_lab,
@@ -486,6 +483,41 @@ WarpX::InitLevelData (int lev, Real /*time*/)
         }
     }
 
+#ifdef AMREX_USE_EB
+    if(lev==maxLevel()) {
+        if (WarpX::maxwell_solver_id == MaxwellSolverAlgo::Yee
+            || WarpX::maxwell_solver_id == MaxwellSolverAlgo::ECT) {
+            ComputeEdgeLengths();
+            ComputeFaceAreas();
+            ScaleEdges();
+            ScaleAreas();
+            ComputeDistanceToEB();
+
+            const auto &period = Geom(lev).periodicity();
+            WarpXCommUtil::FillBoundary(*m_edge_lengths[lev][0], guard_cells.ng_alloc_EB, period);
+            WarpXCommUtil::FillBoundary(*m_edge_lengths[lev][1], guard_cells.ng_alloc_EB, period);
+            WarpXCommUtil::FillBoundary(*m_edge_lengths[lev][2], guard_cells.ng_alloc_EB, period);
+            WarpXCommUtil::FillBoundary(*m_face_areas[lev][0], guard_cells.ng_alloc_EB, period);
+            WarpXCommUtil::FillBoundary(*m_face_areas[lev][1], guard_cells.ng_alloc_EB, period);
+            WarpXCommUtil::FillBoundary(*m_face_areas[lev][2], guard_cells.ng_alloc_EB, period);
+
+            if (WarpX::maxwell_solver_id == MaxwellSolverAlgo::ECT) {
+                WarpXCommUtil::FillBoundary(*m_area_mod[lev][0], guard_cells.ng_alloc_EB, period);
+                WarpXCommUtil::FillBoundary(*m_area_mod[lev][1], guard_cells.ng_alloc_EB, period);
+                WarpXCommUtil::FillBoundary(*m_area_mod[lev][2], guard_cells.ng_alloc_EB, period);
+                MarkCells();
+                WarpXCommUtil::FillBoundary(*m_flag_info_face[lev][0], guard_cells.ng_alloc_EB, period);
+                WarpXCommUtil::FillBoundary(*m_flag_info_face[lev][1], guard_cells.ng_alloc_EB, period);
+                WarpXCommUtil::FillBoundary(*m_flag_info_face[lev][2], guard_cells.ng_alloc_EB, period);
+                WarpXCommUtil::FillBoundary(*m_flag_ext_face[lev][0], guard_cells.ng_alloc_EB, period);
+                WarpXCommUtil::FillBoundary(*m_flag_ext_face[lev][1], guard_cells.ng_alloc_EB, period);
+                WarpXCommUtil::FillBoundary(*m_flag_ext_face[lev][2], guard_cells.ng_alloc_EB, period);
+                ComputeFaceExtensions();
+            }
+        }
+    }
+#endif
+
     // if the input string for the B-field is "parse_b_ext_grid_function",
     // then the analytical expression or function must be
     // provided in the input file.
@@ -514,6 +546,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  Bxfield_parser->compile<3>(),
                                                  Byfield_parser->compile<3>(),
                                                  Bzfield_parser->compile<3>(),
+                                                 m_face_areas[lev],
                                                  lev);
        if (lev > 0) {
           InitializeExternalFieldsOnGridUsingParser(Bfield_aux[lev][0].get(),
@@ -522,6 +555,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Bxfield_parser->compile<3>(),
                                                     Byfield_parser->compile<3>(),
                                                     Bzfield_parser->compile<3>(),
+                                                    m_face_areas[lev],
                                                     lev);
 
           InitializeExternalFieldsOnGridUsingParser(Bfield_cp[lev][0].get(),
@@ -530,6 +564,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Bxfield_parser->compile<3>(),
                                                     Byfield_parser->compile<3>(),
                                                     Bzfield_parser->compile<3>(),
+                                                    m_face_areas[lev],
                                                     lev);
        }
     }
@@ -563,6 +598,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  Exfield_parser->compile<3>(),
                                                  Eyfield_parser->compile<3>(),
                                                  Ezfield_parser->compile<3>(),
+                                                 m_edge_lengths[lev],
                                                  lev);
        if (lev > 0) {
           InitializeExternalFieldsOnGridUsingParser(Efield_aux[lev][0].get(),
@@ -571,6 +607,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Exfield_parser->compile<3>(),
                                                     Eyfield_parser->compile<3>(),
                                                     Ezfield_parser->compile<3>(),
+                                                    m_edge_lengths[lev],
                                                     lev);
 
           InitializeExternalFieldsOnGridUsingParser(Efield_cp[lev][0].get(),
@@ -579,6 +616,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     Exfield_parser->compile<3>(),
                                                     Eyfield_parser->compile<3>(),
                                                     Ezfield_parser->compile<3>(),
+                                                    m_edge_lengths[lev],
                                                     lev);
        }
     }
@@ -619,7 +657,9 @@ void
 WarpX::InitializeExternalFieldsOnGridUsingParser (
        MultiFab *mfx, MultiFab *mfy, MultiFab *mfz,
        ParserExecutor<3> const& xfield_parser, ParserExecutor<3> const& yfield_parser,
-       ParserExecutor<3> const& zfield_parser, const int lev)
+       ParserExecutor<3> const& zfield_parser,
+       std::array< std::unique_ptr<amrex::MultiFab>, 3 > const& geom_data,
+       const int lev)
 {
 
     const auto dx_lev = geom[lev].CellSizeArray();
@@ -637,8 +677,19 @@ WarpX::InitializeExternalFieldsOnGridUsingParser (
        auto const& mfyfab = mfy->array(mfi);
        auto const& mfzfab = mfz->array(mfi);
 
+#ifdef AMREX_USE_EB
+       amrex::Array4<amrex::Real> const& geom_data_x = geom_data[0]->array(mfi);
+       amrex::Array4<amrex::Real> const& geom_data_y = geom_data[1]->array(mfi);
+       amrex::Array4<amrex::Real> const& geom_data_z = geom_data[2]->array(mfi);
+#else
+       amrex::ignore_unused(geom_data);
+#endif
+
        amrex::ParallelFor (tbx, tby, tbz,
             [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+#ifdef AMREX_USE_EB
+                if(geom_data_x(i, j, k)<=0) return;
+#endif
                 // Shift required in the x-, y-, or z- position
                 // depending on the index type of the multifab
                 amrex::Real fac_x = (1._rt - x_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
@@ -657,6 +708,9 @@ WarpX::InitializeExternalFieldsOnGridUsingParser (
                 mfxfab(i,j,k) = xfield_parser(x,y,z);
             },
             [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+#ifdef AMREX_USE_EB
+                if(geom_data_y(i, j, k)<=0) return;
+#endif
                 amrex::Real fac_x = (1._rt - y_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
                 amrex::Real x = i*dx_lev[0] + real_box.lo(0) + fac_x;
 #if (AMREX_SPACEDIM==2)
@@ -673,6 +727,9 @@ WarpX::InitializeExternalFieldsOnGridUsingParser (
                 mfyfab(i,j,k)  = yfield_parser(x,y,z);
             },
             [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+#ifdef AMREX_USE_EB
+                if(geom_data_z(i, j, k)<=0) return;
+#endif
                 amrex::Real fac_x = (1._rt - z_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
                 amrex::Real x = i*dx_lev[0] + real_box.lo(0) + fac_x;
 #if (AMREX_SPACEDIM==2)
@@ -700,8 +757,9 @@ WarpX::PerformanceHints ()
     for (int ilev = 0; ilev <= finestLevel(); ++ilev) {
         total_nboxes += boxArray(ilev).size();
     }
-    if (ParallelDescriptor::NProcs() > total_nboxes)
-        amrex::Print() << "\n[Warning] [Performance] Too many resources / too little work!\n"
+    if (ParallelDescriptor::NProcs() > total_nboxes){
+        std::stringstream warnMsg;
+        warnMsg << "Too many resources / too little work!\n"
             << "  It looks like you requested more compute resources than "
             << "there are total number of boxes of cells available ("
             << total_nboxes << "). "
@@ -715,6 +773,9 @@ WarpX::PerformanceHints ()
 #endif
             << "  More information:\n"
             << "  https://warpx.readthedocs.io/en/latest/running_cpp/parallelization.html\n";
+
+        WarpX::GetInstance().RecordWarning("Performance", warnMsg.str(), WarnPriority::high);
+    }
 
     // TODO: warn if some ranks have disproportionally more work than all others
     //       tricky: it can be ok to assign "vacuum" boxes to some ranks w/o slowing down

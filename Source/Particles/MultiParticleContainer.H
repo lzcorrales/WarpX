@@ -146,11 +146,10 @@ public:
      *             a fraction of dt). When different than 0, the particle
      *             position will be temporarily modified to match the time
      *             of the deposition.
-     * \param[in] icomp component of the MultiFab where rho is deposited (old, new)
      */
     void
     DepositCharge (amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
-                   const amrex::Real relative_t, const int icomp = 0);
+                   const amrex::Real relative_t);
 
     /**
      * \brief Deposit current density.
@@ -279,6 +278,14 @@ public:
 
     std::vector<std::string> GetSpeciesNames() const { return species_names; }
 
+    std::vector<std::string> GetLasersNames() const { return lasers_names; }
+
+    std::vector<std::string> GetSpeciesAndLasersNames() const {
+        std::vector<std::string> tmp = species_names;
+        tmp.insert(tmp.end(), lasers_names.begin(), lasers_names.end());
+        return tmp;
+    }
+
     PhysicalParticleContainer& GetPCtmp () { return *pc_tmp; }
 
     void ScrapeParticles (const amrex::Vector<const amrex::MultiFab*>& distance_to_eb);
@@ -364,9 +371,6 @@ protected:
     std::vector<bool> m_gather_from_main_grid;
 
     std::vector<PCTypes> species_types;
-
-    /** Controls boundaries for particles exiting the domain */
-    ParticleBoundaries m_boundary_conditions;
 
     template<typename ...Args>
     amrex::MFItInfo getMFItInfo (const WarpXParticleContainer& pc_src,
