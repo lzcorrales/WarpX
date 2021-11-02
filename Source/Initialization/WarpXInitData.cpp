@@ -23,6 +23,7 @@
 #include "Utils/WarpXConst.H"
 #include "Utils/WarpXProfilerWrapper.H"
 #include "Utils/WarpXUtil.H"
+#include "Initialization/ReconnectionPerturbation.H"
 
 #include <AMReX.H>
 #include <AMReX_AmrCore.H>
@@ -63,6 +64,7 @@
 #include <utility>
 #include <vector>
 #include <sstream>
+#include <cmath>
 
 using namespace amrex;
 
@@ -567,6 +569,16 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                     m_face_areas[lev],
                                                     lev);
        }
+    }
+    int IncludeBfieldPerturbation = 0;
+    pp_warpx.query("IncludeBfieldPerturbation",IncludeBfieldPerturbation);
+    if (IncludeBfieldPerturbation == 1) {
+        Reconnection_Perturbation::AddBfieldPerturbation (Bfield_fp[lev][0].get(),
+                               Bfield_fp[lev][1].get(),
+                               Bfield_fp[lev][2].get(),
+                               Bxfield_parser->compile<3>(),
+                               Byfield_parser->compile<3>(),
+                               Bzfield_parser->compile<3>(), lev);
     }
 
     // if the input string for the E-field is "parse_e_ext_grid_function",
