@@ -9,6 +9,10 @@
 #define INJECTOR_MOMENTUM_H_
 
 #include "CustomMomentumProb.H"
+#include "GetTemperature.H"
+#include "GetVelocity.H"
+#include "TemperatureProperties.H"
+#include "VelocityProperties.H"
 #include "Utils/WarpXConst.H"
 
 #include <AMReX.H>
@@ -62,7 +66,7 @@ struct InjectorMomentumGaussian
 
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getMomentum (amrex::Real x, amrex::Real /*y*/, amrex::Real /*z*/,
+    getMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/,
                  amrex::RandomEngine const& engine) const noexcept
     {
         return amrex::XDim3{amrex::RandomNormal(m_ux_m, m_ux_th, engine),
@@ -136,59 +140,43 @@ private:
 struct InjectorMomentumBoltzmann
 {
     // Constructor whose inputs are:
-    // the temperature parameter theta,
-    // boost velocity/c beta,
-    // and boost direction dir respectively.
-    InjectorMomentumBoltzmann(amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real de ,amrex::Real x, amrex::Real c, int di, bool cc) noexcept
-        : sigma(s), lambdae(l), beta0(b), nbnd(n), delta(de), xcs(x), cellSize(c), dir(di), cellCentered(cc)
+    // a reference to the initial temperature container t,
+    // a reference to the initial velocity container b
+    InjectorMomentumBoltzmann(GetTemperature const& t, GetVelocity const& b) noexcept
+        : velocity(b), temperature(t)
         {}
 
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getMomentum (amrex::Real x, amrex::Real /*y*/, amrex::Real /*z*/,
+    getMomentum (amrex::Real const x, amrex::Real const y, amrex::Real const z,
                  amrex::RandomEngine const& engine) const noexcept
     {
-        // Sobol method for sampling MJ Speeds,
-        // from Zenitani 2015 (Phys. Plasmas 22, 042116).
-        amrex::Real x1, x2, gamma, theta, beta;
-	amrex::Real vave;
-        amrex::Real u [3];
-	if(cellCentered)
-	{
-	    // x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
-	    x1 = (std::trunc(x*1/cellSize+0.5*x/std::abs(x)))*cellSize;
-	}
-	else
-	{
-	    x1 = x;
-	}
-	beta = -1 * beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ),-1) - std::pow(std::cosh( (x1 - xcs) / delta ),-1));
-	// theta = sigma/4. * ( 51./50. - std::pow( -1. - std::tanh((x1 - xcs) / delta) + std::tanh((x1 + xcs) / delta) , 2 ) ) /
-	//     ( ( 1. + 4.*( std::pow( std::cosh((x1 + xcs) / delta), -1 )  + std::pow( std::cosh((x1 - xcs) / delta), -1 ) ) ) *
-	//       std::pow( 1. - std::pow(beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ), -1 ) - std::pow(std::cosh( (x1 - xcs) / delta ), -1 ) ), 2 ), 0.5 ) );
-	theta = sigma/4. * (51./50.
-			    - std::pow( - ( 2./(M_PI/2.+5.-1.) ) * (std::atan(std::tanh((x1+xcs)/2./delta)) - std::atan(std::tanh((x1-xcs)/2./delta)) - M_PI/4.
-								+ (5. - 1.) / 2. * (std::tanh((x1+xcs)/delta) - std::tanh((x1-xcs)/delta) - 1.)) , 2 ))
-	    /( ( 1. + 4.*( std::pow( std::cosh((x1 + xcs) / delta), -1 )  + std::pow( std::cosh((x1 - xcs) / delta), -1 ) ) ) *
-	       std::pow( 1. - std::pow(beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ), -1 ) - std::pow(std::cosh( (x1 - xcs) / delta ), -1 ) ), 2), 0.5 ) );
-
-	// theta = sigma/200;
-
-	vave = std::sqrt(2.*theta);
-
-	x1 = amrex::Random(engine);
+        // Calculate the local temperature and check if it's too
+        // high for Boltzmann or less than zero
+        amrex::Real const theta = temperature(x,y,z);
+        if (theta < 0) {
+            amrex::Abort("Negative temperature parameter theta encountered, which is not allowed");
+        }
+        // Calculate local velocity and abort if |beta|>=1
+        amrex::Real const beta = velocity(x,y,z);
+        if (beta <= -1 || beta >= 1) {
+            amrex::Abort("beta = v/c magnitude greater than or equal to 1");
+        }
+        // Calculate the value of vave from the local temperature
+        amrex::Real const vave = std::sqrt(amrex::Real(2) * theta);
+        int const dir = velocity.direction();
+        amrex::Real x1, x2, gamma;
+        amrex::Real u[3];
+        x1 = amrex::Random(engine);
         x2 = amrex::Random(engine);
-        // Each value of sqrt(-log(x1))*sin(2*pi*x2) is a sample from a Boltzmann
+        // Each value of sqrt(-log(x1))*sin(2*pi*x2) is a sample from a Gaussian
         // distribution with sigma = average velocity / c
         // using the Box-Mueller Method.
-	u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*MathConst::pi*x2); 
+        u[(dir+1)%3] = vave*std::sqrt(-std::log(x1)) *std::sin(2*MathConst::pi*x2);
         u[(dir+2)%3] = vave*std::sqrt(-std::log(x1)) *std::cos(2*MathConst::pi*x2);
         u[dir] = vave*std::sqrt(-std::log(amrex::Random(engine)))*
-             std::sin(2*M_PI*amrex::Random(engine));
-	// u[(dir+1)%3] = 0;
-        // u[(dir+2)%3] = 0;
-	// u[dir] = 0;
-        gamma = std::pow(u[0],2)+std::pow(u[1],2)+std::pow(u[2],2);
+            std::sin(2*MathConst::pi*amrex::Random(engine));
+        gamma = u[0]*u[0]+u[1]*u[1]+u[2]*u[2];
         gamma = std::sqrt(1+gamma);
         // The following condition is equtaion 32 in Zenitani 2015
         // (Phys. Plasmas 22, 042116) , called the flipping method. It
@@ -209,30 +197,29 @@ struct InjectorMomentumBoltzmann
         // This Lorentz transform is equation 17 in Zenitani.
         // It transforms the integral d3u' -> d3u
         // where d3u' is the volume element for momentum in the boosted frame.
-	// beta = beta0;
-        u[dir] = 1/std::sqrt(1-pow(beta,2))*(u[dir]+gamma*beta);
+        u[dir] = 1/std::sqrt(1-beta*beta)*(u[dir]+gamma*beta);
         // Note that if beta = 0 then the flipping method and Lorentz transform
         // have no effect on the u[dir] direction.
-	
         return amrex::XDim3 {u[0],u[1],u[2]};
     }
 
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getBulkMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/) const noexcept
+    getBulkMomentum (amrex::Real const x, amrex::Real const y, amrex::Real const z) const noexcept
     {
         using namespace amrex;
         Real u[3];
         for (int idim = 0; idim < 3; ++idim) u[idim] = 0.0_rt;
-        const Real gamma = static_cast<amrex::Real>(1./sqrt(1+beta0*beta0));
-        u[dir] = gamma*beta0;
+        const Real beta = velocity(x,y,z);
+        int const dir = velocity.direction();
+        const Real gamma = static_cast<amrex::Real>(1./sqrt(1+beta*beta));
+        u[dir] = gamma*beta;
         return XDim3 {u[0],u[1],u[2]};
     }
 
 private:
-    int dir;
-    bool cellCentered;
-    amrex::Real sigma, lambdae, beta0, nbnd, xcs, cellSize, delta;
+    GetVelocity velocity;
+    GetTemperature temperature;
 };
 
 // struct whose getMomentum returns momentum for 1 particle with relativistc
@@ -241,71 +228,55 @@ private:
 struct InjectorMomentumJuttner
 {
     // Constructor whose inputs are:
-    // the temperature parameter theta,
-    // boost velocity/c beta,
-    // and boost direction dir respectively.
-    InjectorMomentumJuttner(amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real de, amrex::Real x, amrex::Real c, int di, bool cc) noexcept
-        : sigma(s), lambdae(l), beta0(b), nbnd(n), delta(de), xcs(x), cellSize(c), dir(di), cellCentered(cc)
+    // a reference to the initial temperature container t,
+    // a reference to the initial velocity container b
+    InjectorMomentumJuttner(GetTemperature const& t, GetVelocity const& b) noexcept
+        : velocity(b), temperature(t)
         {}
 
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getMomentum (amrex::Real x, amrex::Real /*y*/, amrex::Real /*z*/,
+    getMomentum (amrex::Real const x, amrex::Real const y, amrex::Real const z,
                  amrex::RandomEngine const& engine) const noexcept
     {
         // Sobol method for sampling MJ Speeds,
         // from Zenitani 2015 (Phys. Plasmas 22, 042116).
-        amrex::Real x1, x2, gamma, theta, beta, A, B, C;
+        amrex::Real x1, x2, gamma;
         amrex::Real u [3];
-
-	x1 = static_cast<amrex::Real>(0.);
-	gamma = static_cast<amrex::Real>(0.);
+        amrex::Real const theta = temperature(x,y,z);
+        // Check if temperature is too low to do sampling method. Abort for now,
+        // in future should implement an alternate method e.g. inverse transform
+        if (theta < 0.1) {
+            amrex::Abort("Temeprature parameter theta is less than minimum 0.1 allowed for Maxwell-Juttner");
+        }
+        // Calculate local velocity and abort if |beta|>=1
+        amrex::Real const beta = velocity(x,y,z);
+        if (beta <= -1 || beta >= 1) {
+            amrex::Abort("beta = v/c magnitude greater than or equal to 1");
+        }
+        int const dir = velocity.direction();
+        x1 = static_cast<amrex::Real>(0.);
+        gamma = static_cast<amrex::Real>(0.);
         u[dir] = static_cast<amrex::Real>(0.);
-	if(cellCentered)
-	{
-	    // x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
-	    x1 = (std::trunc(x*1/cellSize+0.5*x/std::abs(x)))*cellSize;
-	}
-	else
-	{
-	    x1 = x;
-	}
-	beta = -1 * beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ),-1) - std::pow(std::cosh( (x1 - xcs) / delta ),-1));
-	theta = sigma/4. * (51./50.
-			    - std::pow( - ( 2./(M_PI/2.+5.-1.) ) * (std::atan(std::tanh((x1+xcs)/2./delta)) - std::atan(std::tanh((x1-xcs)/2./delta)) - M_PI/4.
-								+ (5. - 1.) / 2. * (std::tanh((x1+xcs)/delta) - std::tanh((x1-xcs)/delta) - 1.)) , 2 ))
-	    /( ( 1. + 4.*( std::pow( std::cosh((x1 + xcs) / delta), -1 )  + std::pow( std::cosh((x1 - xcs) / delta), -1 ) ) )
-	       * std::pow( 1. - std::pow(beta0 * (std::pow(std::cosh( (x1 + xcs) / delta ), -1 ) - std::pow(std::cosh( (x1 - xcs) / delta ), -1 ) ), 2), 0.5 )
-		);
-        x1 = 0.;
-        gamma = 0.;
-        u[dir] = 0.;
         // This condition is equation 10 in Zenitani,
         // though x1 is defined differently.
-
         while(u[dir]-gamma <= x1)
         {
             u[dir] = -theta*
                 std::log(amrex::Random(engine)*amrex::Random(engine)*amrex::Random(engine));
-            gamma = std::sqrt(1.0+std::pow(u[dir],2));
+            gamma = std::sqrt(1+u[dir]*u[dir]);
             x1 = theta*std::log(amrex::Random(engine));
         }
         // The following code samples a random unit vector
         // and multiplies the result by speed u[dir].
         x1 = amrex::Random(engine);
         x2 = amrex::Random(engine);
-	B = 2.0 * x1 - 1.0;
-	A = std::sqrt(1.0-B*B);
-	C = x2 * 2.0 * M_PI;
         // Direction dir is an input parameter that sets the boost direction:
         // 'x' -> d = 0, 'y' -> d = 1, 'z' -> d = 2.
-        u[(dir+1)%3] = u[dir]*A*std::sin(C);
-	u[(dir+2)%3] = u[dir]*A*std::cos(C);
+        u[(dir+1)%3] = 2*u[dir]*std::sqrt(x1*(1-x1))*std::sin(2*MathConst::pi*x2);
+        u[(dir+2)%3] = 2*u[dir]*std::sqrt(x1*(1-x1))*std::cos(2*MathConst::pi*x2);
         // The value of dir is the boost direction to be transformed.
-        u[dir] = u[dir]*B;	
-	// u[(dir+1)%3] = 0;
-	// u[(dir+2)%3] = 0;
-	// u[dir] = 0;
+        u[dir] = u[dir]*(2*x1-1);
         x1 = amrex::Random(engine);
         // The following condition is equtaion 32 in Zenitani, called
         // The flipping method. It transforms the intergral: d3x' -> d3x
@@ -326,7 +297,6 @@ struct InjectorMomentumJuttner
         // This Lorentz transform is equation 17 in Zenitani.
         // It transforms the integral d3u' -> d3u
         // where d3u' is the volume element for momentum in the boosted frame.
-	// beta = theta;
         u[dir] = 1/std::sqrt(1-beta*beta)*(u[dir]+gamma*beta);
         // Note that if beta = 0 then the flipping method and Lorentz transform
         // have no effect on the u[dir] direction.
@@ -335,20 +305,21 @@ struct InjectorMomentumJuttner
 
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getBulkMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/) const noexcept
+    getBulkMomentum (amrex::Real const x, amrex::Real const y, amrex::Real const z) const noexcept
     {
         using namespace amrex;
         Real u[3];
         for (int idim = 0; idim < 3; ++idim) u[idim] = 0.0_rt;
-        const Real gamma = static_cast<Real>(1./sqrt(1.+beta0*beta0));
-        u[dir] = gamma*beta0;
+        Real const beta = velocity(x,y,z);
+        int const dir = velocity.direction();
+        const Real gamma = static_cast<Real>(1./sqrt(1.+beta*beta));
+        u[dir] = gamma*beta;
         return XDim3 {u[0],u[1],u[2]};
     }
 
 private:
-    int dir;
-    bool cellCentered;
-    amrex::Real sigma, lambdae, beta0, nbnd, xcs, cellSize, delta;
+    GetVelocity velocity;
+    GetTemperature temperature;
 };
 
 /**
@@ -414,7 +385,6 @@ struct InjectorMomentumParser
 // InjectorMomentum contains a union (called Object) that holds any one
 // instance of:
 // - InjectorMomentumConstant       : to generate constant density;
-// - InjectorMomentumBoltzmann       : to generate Boltzmann distribution;
 // - InjectorMomentumGaussian       : to generate gaussian distribution;
 // - InjectorMomentumGaussianFlux   : to generate v*gaussian distribution;
 // - InjectorMomentumRadialExpansion: to generate radial expansion;
@@ -438,7 +408,7 @@ struct InjectorMomentum
         : type(Type::parser),
           object(t, a_ux_parser, a_uy_parser, a_uz_parser)
     { }
-    
+
     // This constructor stores a InjectorMomentumGaussian in union object.
     InjectorMomentum (InjectorMomentumGaussian* t,
                       amrex::Real a_ux_m, amrex::Real a_uy_m, amrex::Real a_uz_m,
@@ -457,16 +427,16 @@ struct InjectorMomentum
     { }
 
     InjectorMomentum (InjectorMomentumBoltzmann* t,
-		      amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real de, amrex::Real x, amrex::Real c, int di, bool cc)
-	: type(Type::boltzmann),
-	  object(t, s, l, b, n, de, x, c, di, cc)
+                       GetTemperature const& temperature, GetVelocity const& velocity)
+         : type(Type::boltzmann),
+           object(t, temperature, velocity)
     { }
 
      // This constructor stores a InjectorMomentumJuttner in union object.
      InjectorMomentum (InjectorMomentumJuttner* t,
-                       amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real de, amrex::Real x, amrex::Real c, int di, bool cc)
+                       GetTemperature const& temperature, GetVelocity const& velocity)
          : type(Type::juttner),
-           object(t, s, l, b, n, de, x, c, di, cc)
+           object(t, temperature, velocity)
     { }
 
     // This constructor stores a InjectorMomentumCustom in union object.
@@ -615,11 +585,11 @@ private:
                 int a_flux_normal_axis, int a_flux_direction) noexcept
             : gaussianflux(a_ux_m,a_uy_m,a_uz_m,a_ux_th,a_uy_th,a_uz_th,a_flux_normal_axis,a_flux_direction) {}
         Object (InjectorMomentumBoltzmann*,
-                amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real de, amrex::Real x, amrex::Real c, int di, bool cc) noexcept
-            : boltzmann(s, l, b, n, de, x, c, di, cc) {}
+                GetTemperature const& t, GetVelocity const& b) noexcept
+            : boltzmann(t,b) {}
         Object (InjectorMomentumJuttner*,
-                amrex::Real s, amrex::Real l, amrex::Real b, amrex::Real n, amrex::Real de, amrex::Real x, amrex::Real c, int di, bool cc) noexcept
-            : juttner(s, l, b, n, de, x, c, di, cc) {}
+                GetTemperature const& t, GetVelocity const& b) noexcept
+            : juttner(t,b) {}
         Object (InjectorMomentumRadialExpansion*,
                 amrex::Real u_over_r) noexcept
             : radial_expansion(u_over_r) {}

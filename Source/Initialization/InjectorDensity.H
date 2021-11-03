@@ -41,34 +41,17 @@ private:
 // struct whose getDensity returns local density computed from parser.
 struct InjectorDensityParser
 {
-    InjectorDensityParser (amrex::ParserExecutor<3> const& a_parser, amrex::Real cs, bool cc) noexcept
-        : m_parser(a_parser), cellSize(cs), cellCentered(cc) {}
+    InjectorDensityParser (amrex::ParserExecutor<3> const& a_parser) noexcept
+        : m_parser(a_parser) {}
 
     AMREX_GPU_HOST_DEVICE
     amrex::Real
     getDensity (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
-
-	amrex::Real x1;
-
-	if(cellCentered)
-	{
-	    // x1 = (std::floor(x*1/cellSize)+0.5)*cellSize;
-	    x1 = (std::trunc(x*1/cellSize+0.5*x/std::abs(x)))*cellSize;
-	}
-	else
-	{
-	    x1 = x;
-	}
-	
-        return m_parser(x1,y,z);
+        return m_parser(x,y,z);
     }
 
-    // InjectorDensityParser constructs this GpuParser from WarpXParser.
     amrex::ParserExecutor<3> m_parser;
-private:
-    amrex::Real cellSize;
-    bool cellCentered;
 };
 
 // struct whose getDensity returns local density computed from predefined profile.
@@ -151,9 +134,9 @@ struct InjectorDensity
     { }
 
     // This constructor stores a InjectorDensityParser in union object.
-    InjectorDensity (InjectorDensityParser* t, amrex::ParserExecutor<3> const& a_parser, amrex::Real cs, bool cc)
+    InjectorDensity (InjectorDensityParser* t, amrex::ParserExecutor<3> const& a_parser)
         : type(Type::parser),
-          object(t,a_parser, cs, cc)
+          object(t,a_parser)
     { }
 
     // This constructor stores a InjectorDensityCustom in union object.
@@ -218,8 +201,8 @@ private:
     union Object {
         Object (InjectorDensityConstant*, amrex::Real a_rho) noexcept
             : constant(a_rho) {}
-        Object (InjectorDensityParser*, amrex::ParserExecutor<3> const& a_parser, amrex::Real cs, bool cc) noexcept
-            : parser(a_parser, cs, cc) {}
+        Object (InjectorDensityParser*, amrex::ParserExecutor<3> const& a_parser) noexcept
+            : parser(a_parser) {}
         Object (InjectorDensityCustom*, std::string const& a_species_name) noexcept
             : custom(a_species_name) {}
         Object (InjectorDensityPredefined*, std::string const& a_species_name) noexcept
