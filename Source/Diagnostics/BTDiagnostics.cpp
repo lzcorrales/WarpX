@@ -117,7 +117,7 @@ BTDiagnostics::ReadParameters ()
         "The moving window must not stop when using the boosted frame diagnostic.");
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE( warpx.start_moving_window_step == 0,
         "The moving window must start at step zero for the boosted frame diagnostic.");
-    AMREX_ALWAYS_ASSERT_WITH_MESSAGE( warpx.moving_window_dir == AMREX_SPACEDIM-1,
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE( warpx.moving_window_dir == WARPX_ZINDEX,
            "The boosted frame diagnostic currently only works if the moving window is in the z direction.");
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
         m_format == "plotfile" || m_format == "openpmd",
@@ -301,6 +301,7 @@ BTDiagnostics::InitializeFieldBufferData ( int i_buffer , int lev)
                                    / dz_lab(warpx.getdt(lev), ref_ratio[m_moving_window_dir])                               ) );
     // Take the max of 0 and num_zcells_lab
     int Nz_lab = std::max( 0, num_zcells_lab );
+#if (AMREX_SPACEDIM >= 2)
     // Number of lab-frame cells in x-direction at level, lev
     const int num_xcells_lab = static_cast<int>( floor (
                                   ( diag_dom.hi(0) - diag_dom.lo(0) )
@@ -308,7 +309,8 @@ BTDiagnostics::InitializeFieldBufferData ( int i_buffer , int lev)
                               ) );
     // Take the max of 0 and num_ycells_lab
     int Nx_lab = std::max( 0, num_xcells_lab);
-#if (AMREX_SPACEDIM == 3)
+#endif
+#if defined(WARPX_DIM_3D)
     // Number of lab-frame cells in the y-direction at level, lev
     const int num_ycells_lab = static_cast<int>( floor (
                                    ( diag_dom.hi(1) - diag_dom.lo(1) )
@@ -317,8 +319,10 @@ BTDiagnostics::InitializeFieldBufferData ( int i_buffer , int lev)
     // Take the max of 0 and num_xcells_lab
     int Ny_lab = std::max( 0, num_ycells_lab );
     m_snapshot_ncells_lab[i_buffer] = {Nx_lab, Ny_lab, Nz_lab};
-#else
+#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
     m_snapshot_ncells_lab[i_buffer] = {Nx_lab, Nz_lab};
+#else
+    m_snapshot_ncells_lab[i_buffer] = amrex::IntVect(Nz_lab);
 #endif
 }
 
@@ -520,7 +524,7 @@ BTDiagnostics::DefineFieldBufferMultiFab (const int i_buffer, const int lev)
         if (lev > 0 ) ref_ratio = WarpX::RefRatio(lev-1);
         for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
             amrex::Real cellsize;
-            if (idim < AMREX_SPACEDIM-1) {
+            if (idim < WARPX_ZINDEX) {
                 cellsize = warpx.Geom(lev).CellSize(idim);
             } else {
                 cellsize = dz_lab(warpx.getdt(lev), ref_ratio[m_moving_window_dir]);
@@ -658,6 +662,12 @@ void BTDiagnostics::TMP_ClearSpeciesDataForBTD ()
 
 void BTDiagnostics::MergeBuffersForPlotfile (int i_snapshot)
 {
+    // Make sure all MPI ranks wrote their files and closed it
+    // Note: additionally, since a Barrier does not guarantee a FS sync
+    //       on a parallel FS, we might need to add timeouts and retries
+    //       to the open calls below when running at scale.
+    amrex::ParallelDescriptor::Barrier();
+
     auto & warpx = WarpX::GetInstance();
     const amrex::Vector<int> iteration = warpx.getistep();
     if (amrex::ParallelContext::IOProcessorSub()) {

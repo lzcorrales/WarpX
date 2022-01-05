@@ -107,10 +107,12 @@ Diagnostics::BaseReadParameters ()
     }
     // For a moving window simulation, the user-defined m_lo and m_hi must be converted.
     if (warpx.do_moving_window) {
-#if (AMREX_SPACEDIM == 3)
+#if defined(WARPX_DIM_3D)
     amrex::Vector<int> dim_map {0, 1, 2};
-#else
+#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
     amrex::Vector<int> dim_map {0, 2};
+#else
+    amrex::Vector<int> dim_map {2};
 #endif
        if (warpx.boost_direction[ dim_map[warpx.moving_window_dir] ] == 1) {
            // Convert user-defined lo and hi for diagnostics to account for boosted-frame
