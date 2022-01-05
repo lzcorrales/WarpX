@@ -100,7 +100,7 @@ WarpX::LoadBalance ()
         }
 
     amrex::Print() << "Do loadbalance is : " << doLoadBalance << " nmax : " << nmax << " current efficiency : " <<  currentEfficiency << " proposed efficiency : " << proposedEfficiency << "\n";
-    
+
         ParallelDescriptor::Bcast(&doLoadBalance, 1,
                                   ParallelDescriptor::IOProcessorNumber());
 

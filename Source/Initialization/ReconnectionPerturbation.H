@@ -69,7 +69,7 @@ public:
         complex_dilog_result.imag(z_dilog_im.val);
         return complex_dilog_result;
     }
-    
+
     /**
      * Perform derivative along x on a cell-centered grid, from a nodal field `F` */
     AMREX_FORCE_INLINE

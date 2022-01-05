@@ -52,7 +52,7 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
                               amrex::MultiFab *By,
                               amrex::MultiFab *Bz,
                               amrex::ParserExecutor<3> const& xfield_parser,
-                              amrex::ParserExecutor<3> const& yfield_parser, 
+                              amrex::ParserExecutor<3> const& yfield_parser,
                               amrex::ParserExecutor<3> const& zfield_parser, const int lev)
 {
     auto &warpx = WarpX::GetInstance();
@@ -95,7 +95,7 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
         {
             amrex::Real fac_x = (1._rt - x_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
             amrex::Real x = i*dx_lev[0] + real_box.lo(0) + fac_x;
-#if (AMREX_SPACEDIM==2) 
+#if (AMREX_SPACEDIM==2)
             amrex::Real y = 0._rt;
             amrex::Real fac_z = (1._rt - x_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real z = j*dx_lev[1] + real_box.lo(1) + fac_z;
