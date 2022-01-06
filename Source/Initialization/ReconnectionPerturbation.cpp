@@ -59,16 +59,14 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
     const auto dx_lev = warpx.Geom(lev).CellSizeArray();
     const RealBox& real_box = warpx.Geom(lev).ProbDomain();
     amrex::IntVect x_nodal_flag = Bx->ixType().toIntVect();
-    amrex::IntVect y_nodal_flag = By->ixType().toIntVect();
     amrex::IntVect z_nodal_flag = Bz->ixType().toIntVect();
+    amrex::ignore_unused(xfield_parser, yfield_parser);
 
-    const auto problo = warpx.Geom(0).ProbLoArray();
-    const auto probhi = warpx.Geom(0).ProbHiArray();
     amrex::Real pi_val = MathConst::pi;
     amrex::Real Lx = (real_box.hi(0) - real_box.lo(0) ) / 2.0;
-#if (AMREX_SPACEDIM==2)
+#ifdef WARPX_DIM_XZ
     amrex::Real Lz = ( real_box.hi(1) - real_box.lo(1) ) /2.0 ;
-#else
+#elif WARPX_DIM_3D
     amrex::Real Lz = ( real_box.hi(2) - real_box.lo(2) ) /2.0;
 #endif
     amrex::Print() << " Lx " << Lx << " " << Lz << "\n";
@@ -84,7 +82,6 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
     {
 
         auto const& Bx_array = Bx->array(mfi);
-        auto const& By_array = By->array(mfi);
         auto const& Bz_array = Bz->array(mfi);
 
         const amrex::Box& tbx = mfi.tilebox( x_nodal_flag, Bx->nGrowVect() );
@@ -95,11 +92,11 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
         {
             amrex::Real fac_x = (1._rt - x_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
             amrex::Real x = i*dx_lev[0] + real_box.lo(0) + fac_x;
-#if (AMREX_SPACEDIM==2)
+#ifdef WARPX_DIM_XZ
             amrex::Real y = 0._rt;
             amrex::Real fac_z = (1._rt - x_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real z = j*dx_lev[1] + real_box.lo(1) + fac_z;
-#else
+#elif WARPX_DIM_3D
             amrex::Real fac_y = (1._rt - x_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real y = j*dx_lev[1] + real_box.lo(1) + fac_y;
             amrex::Real fac_z = (1._rt - x_nodal_flag[2]) * dx_lev[2] * 0.5_rt;
@@ -119,11 +116,11 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
         {
             amrex::Real fac_x = (1._rt - z_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
             amrex::Real x = i*dx_lev[0] + real_box.lo(0) + fac_x;
-#if (AMREX_SPACEDIM==2)
+#ifdef WARPX_DIM_XZ
             amrex::Real y = 0._rt;
             amrex::Real fac_z = (1._rt - z_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real z = j*dx_lev[1] + real_box.lo(1) + fac_z;
-#elif (AMREX_SPACEDIM==3)
+#elif WARPX_DIM_3D
             amrex::Real fac_y = (1._rt - z_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real y = j*dx_lev[1] + real_box.lo(1) + fac_y;
             amrex::Real fac_z = (1._rt - z_nodal_flag[2]) * dx_lev[2] * 0.5_rt;
