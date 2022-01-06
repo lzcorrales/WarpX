@@ -64,7 +64,7 @@ public:
         amrex::Real theta = std::atan2(z_arg.imag(), z_arg.real());
         int error = gsl_sf_complex_dilog_e( magnitude, theta,
                                             &z_dilog_re, &z_dilog_im );
-        ignore_unused(error);
+        amrex::ignore_unused(error);
         std::complex<double> complex_dilog_result;
         complex_dilog_result.real(z_dilog_re.val);
         complex_dilog_result.imag(z_dilog_im.val);
@@ -80,7 +80,7 @@ public:
         const amrex::Real nd_ratio, const amrex::Real delta)
     {
         using namespace amrex;
-        ignore_unused(z);
+        amrex::ignore_unused(z);
         std::complex<double> i(0.0, 1.);
 
         amrex::Real prefactor = (2._rt * B0) / ( (pi_val/2._rt) + nd_ratio - 1._rt);
