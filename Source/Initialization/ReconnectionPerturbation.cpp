@@ -92,17 +92,16 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
         {
             amrex::Real fac_x = (1._rt - x_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
             amrex::Real x = i*dx_lev[0] + real_box.lo(0) + fac_x;
-#ifdef WARPX_DIM_XZ
+#if defined(WARPX_DIM_XZ)
             amrex::Real y = 0._rt;
             amrex::Real fac_z = (1._rt - x_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real z = j*dx_lev[1] + real_box.lo(1) + fac_z;
-#elif WARPX_DIM_3D
+#elif defined (WARPX_DIM_3D)
             amrex::Real fac_y = (1._rt - x_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real y = j*dx_lev[1] + real_box.lo(1) + fac_y;
             amrex::Real fac_z = (1._rt - x_nodal_flag[2]) * dx_lev[2] * 0.5_rt;
             amrex::Real z = k*dx_lev[2] + real_box.lo(2) + fac_z;
 #endif
-
             amrex::Real prefactor = -(pi_val / Lz) * std::sin(pi_val/Lz * z)
                                   * std::cos(pi_val/Lx * (x-xcs))
                                   * std::cos(pi_val/Lx * (x-xcs));
@@ -116,11 +115,11 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
         {
             amrex::Real fac_x = (1._rt - z_nodal_flag[0]) * dx_lev[0] * 0.5_rt;
             amrex::Real x = i*dx_lev[0] + real_box.lo(0) + fac_x;
-#ifdef WARPX_DIM_XZ
+#if defined(WARPX_DIM_XZ)
             amrex::Real y = 0._rt;
             amrex::Real fac_z = (1._rt - z_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real z = j*dx_lev[1] + real_box.lo(1) + fac_z;
-#elif WARPX_DIM_3D
+#elif defined(WARPX_DIM_3D)
             amrex::Real fac_y = (1._rt - z_nodal_flag[1]) * dx_lev[1] * 0.5_rt;
             amrex::Real y = j*dx_lev[1] + real_box.lo(1) + fac_y;
             amrex::Real fac_z = (1._rt - z_nodal_flag[2]) * dx_lev[2] * 0.5_rt;
