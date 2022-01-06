@@ -60,7 +60,7 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
     const RealBox& real_box = warpx.Geom(lev).ProbDomain();
     amrex::IntVect x_nodal_flag = Bx->ixType().toIntVect();
     amrex::IntVect z_nodal_flag = Bz->ixType().toIntVect();
-    amrex::ignore_unused(xfield_parser, yfield_parser);
+    amrex::ignore_unused(xfield_parser, yfield_parser, By);
 
     amrex::Real pi_val = MathConst::pi;
     amrex::Real Lx = (real_box.hi(0) - real_box.lo(0) ) / 2.0;
@@ -102,13 +102,13 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
             amrex::Real fac_z = (1._rt - x_nodal_flag[2]) * dx_lev[2] * 0.5_rt;
             amrex::Real z = k*dx_lev[2] + real_box.lo(2) + fac_z;
 #endif
+            amrex::ignore_unused(y)
             amrex::Real prefactor = -(pi_val / Lz) * std::sin(pi_val/Lz * z)
                                   * std::cos(pi_val/Lx * (x-xcs))
                                   * std::cos(pi_val/Lx * (x-xcs));
             amrex::Real IntegralBz_val = Reconnection_Perturbation::IntegralBz(
                                          x, z, pi_val, xcs, B0, nd_ratio, delta);
             Bx_array(i,j,k) += magnitude * prefactor * IntegralBz_val;
-
         });
         // Compute perturbation and add to Bz
         amrex::LoopOnCpu( tbz, [=] (int i, int j, int k)
@@ -125,6 +125,7 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
             amrex::Real fac_z = (1._rt - z_nodal_flag[2]) * dx_lev[2] * 0.5_rt;
             amrex::Real z = k*dx_lev[2] + real_box.lo(2) + fac_z;
 #endif
+            amrex::ignore_unused(y)
             amrex::Real prefactor_term1 = (pi_val / Lx) * std::cos(pi_val/Lz * z)
                                         * std::sin(2.*pi_val/Lx * (x-xcs));
             amrex::Real prefactor_term2 = -std::cos(pi_val/Lz * z)
