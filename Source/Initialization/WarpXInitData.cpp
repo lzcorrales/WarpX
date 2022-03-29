@@ -793,12 +793,14 @@ WarpX::InitLevelData (int lev, Real /*time*/)
     int IncludeBfieldPerturbation = 0;
     pp_warpx.query("IncludeBfieldPerturbation",IncludeBfieldPerturbation);
     if (IncludeBfieldPerturbation == 1) {
+#ifndef WARPX_DIM_RZ
         Reconnection_Perturbation::AddBfieldPerturbation (Bfield_fp[lev][0].get(),
                                Bfield_fp[lev][1].get(),
                                Bfield_fp[lev][2].get(),
                                Bxfield_parser->compile<3>(),
                                Byfield_parser->compile<3>(),
                                Bzfield_parser->compile<3>(), lev);
+#endif
     }
 
     // if the input string for the E-field is "parse_e_ext_grid_function",
