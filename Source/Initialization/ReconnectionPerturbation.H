@@ -2,6 +2,7 @@
 #define WARPX_RECONNECTIONPERTURBATION_H_
 
 #include "WarpX.H"
+#include "Utils/WarpX_Complex.H"
 #include <AMReX.H>
 #include <AMReX_Gpu.H>
 #include <AMReX_Array.H>
@@ -29,7 +30,6 @@
 #include <AMReX_SPACE.H>
 #include <AMReX_Vector.H>
 
-
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -48,7 +48,7 @@ Reconnection_Perturbation {
 
 public:
 
-    Reconnection_Perturbation (){};
+    Reconnection_Perturbation (){}
 #ifndef WARPX_DIM_RZ
     static void AddBfieldPerturbation (amrex::MultiFab *Bx,
                               amrex::MultiFab *By,
@@ -58,17 +58,17 @@ public:
                               amrex::ParserExecutor<3> const& zfield_parser, const int lev);
 
     AMREX_FORCE_INLINE
-    static std::complex<double> getComplexDilog ( const std::complex<double> z_arg) {
+    static Complex getComplexDilog ( const Complex z_arg) {
         gsl_sf_result z_dilog_re, z_dilog_im;
         amrex::Real magnitude = std::sqrt(z_arg.real()*z_arg.real() + z_arg.imag()*z_arg.imag());
         amrex::Real theta = std::atan2(z_arg.imag(), z_arg.real());
         int error = gsl_sf_complex_dilog_e( magnitude, theta,
                                             &z_dilog_re, &z_dilog_im );
         amrex::ignore_unused(error);
-        std::complex<double> complex_dilog_result;
-        complex_dilog_result.real(z_dilog_re.val);
-        complex_dilog_result.imag(z_dilog_im.val);
-        return complex_dilog_result;
+        Complex complex_dilog_result(z_dilog_re.val,z_dilog_im.val);
+        //complex_dilog_result.real(z_dilog_re.val);
+        //complex_dilog_result.imag(z_dilog_im.val);
+        return complex_dilog_result.real();
     }
 
     /**
@@ -81,7 +81,7 @@ public:
     {
         using namespace amrex;
         amrex::ignore_unused(z);
-        std::complex<double> i(0.0, 1.);
+        Complex i(0.0, 1.);
 
         amrex::Real prefactor = (2._rt * B0) / ( (pi_val/2._rt) + nd_ratio - 1._rt);
         amrex::Real term1 = pi_val/4._rt * (x - 2._rt * xcs);
@@ -90,15 +90,15 @@ public:
                             - delta * std::log( std::cosh ( (x+xcs) / delta) )
                             + x
                             );
-        std::complex<double> term3 = delta * i / 2.0_rt
+        Complex term3 = delta * i / 2.0_rt
                                      * ( getComplexDilog( -i * std::exp( -(x-xcs)/delta) )
                                        - getComplexDilog(  i * std::exp( -(x-xcs)/delta) )
                                        );
-        std::complex<double> term4 = - delta * i / 2.0_rt
+        Complex term4 = - delta * i / 2.0_rt
                                      * ( getComplexDilog( -i * std::exp( -(x+xcs)/delta) )
                                        - getComplexDilog(  i * std::exp( -(x+xcs)/delta) )
                                        );
-        std::complex<double> IntegralBz_val = prefactor * ( term1 + term2 + term3 + term4);
+        Complex IntegralBz_val = prefactor * ( term1 + term2 + term3 + term4);
         return IntegralBz_val.real();
     }
 
