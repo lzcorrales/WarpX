@@ -46,7 +46,7 @@
 
 
 using namespace amrex;
-
+#ifndef WARPX_DIM_RZ
 void
 Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
                               amrex::MultiFab *By,
@@ -140,3 +140,4 @@ Reconnection_Perturbation::AddBfieldPerturbation (amrex::MultiFab *Bx,
     }
 }
 
+#endif // ifndef RZ
