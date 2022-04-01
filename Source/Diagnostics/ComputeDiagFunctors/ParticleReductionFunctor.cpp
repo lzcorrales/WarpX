@@ -98,7 +98,7 @@ ParticleReductionFunctor::operator() (amrex::MultiFab& mf_dst, const int dcomp, 
                 amrex::ParticleReal upstream = ptd.m_runtime_rdata[iupstream][pind];
                 amrex::Real value;
                 if ((do_filter) && (!filter_fn(xw, yw, zw, ux, uy, uz))) value = 0._rt;
-                else value = map_fn(xw, yw, zw, ux, uy, uz);
+                else value = map_fn(xw, yw, zw, ux, uy, uz, upstream);
                 amrex::Gpu::Atomic::AddNoRet(&out_array(ii, jj, kk, 0), p.rdata(PIdx::w) * value);
             });
     // Add the weight for each particle -- total number of particles of this species
