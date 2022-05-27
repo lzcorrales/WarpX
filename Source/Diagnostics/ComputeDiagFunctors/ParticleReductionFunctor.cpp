@@ -105,15 +105,18 @@ ParticleReductionFunctor::operator() (amrex::MultiFab& mf_dst, const int dcomp, 
         ppc_mf.setVal(0._rt);
         // Add the weight for each particle -- total number of particles of this species
         ParticleToMesh(pc, ppc_mf, m_lev,
-                [=] AMREX_GPU_DEVICE (const WarpXParticleContainer::SuperParticleType& p,
+                [=] AMREX_GPU_DEVICE (const WarpXParticleContainer::ParticleTileType::ConstParticleTileDataType& ptd,
+                    const int pind,
                     amrex::Array4<amrex::Real> const& out_array,
                     amrex::GpuArray<amrex::Real,AMREX_SPACEDIM> const& plo,
                     amrex::GpuArray<amrex::Real,AMREX_SPACEDIM> const& dxi)
                 {
+                    auto p = ptd.getSuperParticle(pind);
                     // Get position in WarpX convention to use in parser. Will be different from
                     // p.pos() for 1D and 2D simulations.
                     amrex::ParticleReal xw = 0._rt, yw = 0._rt, zw = 0._rt;
                     get_particle_position(p, xw, yw, zw);
+
                     // Get position in AMReX convention to calculate corresponding index.
                     // Ideally this will be replaced with the AMReX NGP interpolator
                     // Always do x direction. No RZ case because it's not implemented, and code

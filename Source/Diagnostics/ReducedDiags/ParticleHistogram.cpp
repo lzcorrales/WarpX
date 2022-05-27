@@ -205,7 +205,6 @@ void ParticleHistogram::ComputeDiags (int step)
                 ParticleReal* const AMREX_RESTRICT d_ux = attribs[PIdx::ux].dataPtr();
                 ParticleReal* const AMREX_RESTRICT d_uy = attribs[PIdx::uy].dataPtr();
                 ParticleReal* const AMREX_RESTRICT d_uz = attribs[PIdx::uz].dataPtr();
-                ParticleReal* const AMREX_RESTRICT d_uz = attribs[PIdx::uz].dataPtr();
                 ParticleReal* const AMREX_RESTRICT d_ups = pti.GetAttribs(iupstream).dataPtr();
 
                 long const np = pti.numParticles();
