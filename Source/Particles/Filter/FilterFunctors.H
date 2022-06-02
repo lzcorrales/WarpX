@@ -168,9 +168,9 @@ public:
     /** Parser function with 9 input variables, t,x,y,z,ux,uy,uz,upstream,track */
     amrex::ParserExecutor<9> const m_function_partparser;
     /** Store physical time. */
-    amrex::Real m_t;
+    amrex::ParticleReal m_t;
     /** Mass of particle species */
-    amrex::Real m_mass;
+    amrex::ParticleReal m_mass;
     /** keep track of momentum units particles will come in with **/
     InputUnits m_units;
 };
