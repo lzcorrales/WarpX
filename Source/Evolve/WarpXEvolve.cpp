@@ -398,16 +398,9 @@ WarpX::OneStep_nosub (Real cur_time)
 
     ExecutePythonCallback("afterdeposition");
 
-    // Synchronize J and rho.
-    // With Vay current deposition, the current deposited at this point is not yet
-    // the actual current J. This is computed later in WarpX::PushPSATD, by calling
-    // WarpX::PSATDVayDeposition. The function SyncCurrent is called after that,
-    // instead of here, so that we synchronize the correct current.
-    if (WarpX::current_deposition_algo != CurrentDepositionAlgo::Vay)
-    {
-        SyncCurrent();
-    }
-    SyncRho();
+    // Synchronize J and rho:
+    // filter (if used), exchange guard cells, interpolate across MR levels
+    SyncCurrentAndRho();
 
     // At this point, J is up-to-date inside the domain, and E and B are
     // up-to-date including enough guard cells for first step of the field
@@ -492,6 +485,46 @@ WarpX::OneStep_nosub (Real cur_time)
     ExecutePythonCallback("afterEsolve");
 }
 
+void WarpX::SyncCurrentAndRho ()
+{
+    if (maxwell_solver_id == MaxwellSolverAlgo::PSATD)
+    {
+        if (fft_periodic_single_box)
+        {
+            // With periodic single box, synchronize J and rho here,
+            // even with current correction or Vay deposition
+            if (current_deposition_algo == CurrentDepositionAlgo::Vay)
+            {
+                // TODO Replace current_cp with current_cp_vay once Vay deposition is implemented with MR
+                SyncCurrent(current_fp_vay, current_cp);
+                SyncRho();
+            }
+            else
+            {
+                SyncCurrent(current_fp, current_cp);
+                SyncRho();
+            }
+        }
+        else // no periodic single box
+        {
+            // Without periodic single box, synchronize J and rho here,
+            // except with current correction or Vay deposition:
+            // in these cases, synchronize later (in WarpX::PushPSATD)
+            if (current_correction == false &&
+                current_deposition_algo != CurrentDepositionAlgo::Vay)
+            {
+                SyncCurrent(current_fp, current_cp);
+                SyncRho();
+            }
+        }
+    }
+    else // FDTD
+    {
+        SyncCurrent(current_fp, current_cp);
+        SyncRho();
+    }
+}
+
 void
 WarpX::OneStep_multiJ (const amrex::Real cur_time)
 {
@@ -533,8 +566,12 @@ WarpX::OneStep_multiJ (const amrex::Real cur_time)
     //    (dt[0] denotes the time step on mesh refinement level 0)
     auto& current = (WarpX::do_current_centering) ? current_fp_nodal : current_fp;
     mypc->DepositCurrent(current, dt[0], -dt[0]);
-    // Filter, exchange boundary, and interpolate across levels
-    SyncCurrent();
+    // Synchronize J: filter, exchange boundary, and interpolate across levels.
+    // With current centering, the nodal current is deposited in 'current',
+    // namely 'current_fp_nodal': SyncCurrent stores the result of its centering
+    // into 'current_fp' and then performs both filtering, if used, and exchange
+    // of guard cells.
+    SyncCurrent(current_fp, current_cp);
     // Forward FFT of J
     PSATDForwardTransformJ(current_fp, current_cp);
 
@@ -557,8 +594,12 @@ WarpX::OneStep_multiJ (const amrex::Real cur_time)
         // Deposit new J at relative time t_depose with time step dt
         // (dt[0] denotes the time step on mesh refinement level 0)
         mypc->DepositCurrent(current, dt[0], t_depose);
-        // Filter, exchange boundary, and interpolate across levels
-        SyncCurrent();
+        // Synchronize J: filter, exchange boundary, and interpolate across levels.
+        // With current centering, the nodal current is deposited in 'current',
+        // namely 'current_fp_nodal': SyncCurrent stores the result of its centering
+        // into 'current_fp' and then performs both filtering, if used, and exchange
+        // of guard cells.
+        SyncCurrent(current_fp, current_cp);
         // Forward FFT of J
         PSATDForwardTransformJ(current_fp, current_cp);
 
