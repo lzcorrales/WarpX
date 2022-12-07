@@ -954,6 +954,12 @@ WarpX::PushParticlesandDepose (int lev, amrex::Real cur_time, DtType a_dt_type, 
         }
     }
 #endif
+    if ((! skip_deposition) && (do_subcycle_current)) {
+        if (WarpX::current_deposition_algo == CurrentDepositionAlgo::Vay)
+            ApplySubcyclingScalingToCurrentDensity(current_fp_vay[lev][0].get(), current_fp_vay[lev][1].get(), current_fp_vay[lev][2].get(), n_subcycle_current, lev);
+        else
+            ApplySubcyclingScalingToCurrentDensity(current_fp[lev][0].get(), current_fp[lev][1].get(), current_fp[lev][2].get(), n_subcycle_current, lev);
+    }
 }
 
 /* \brief Apply perfect mirror condition inside the box (not at a boundary).
