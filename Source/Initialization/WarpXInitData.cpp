@@ -549,18 +549,6 @@ WarpX::ComputeMaxStep ()
     if (do_compute_max_step_from_zmax) {
         computeMaxStepBoostAccelerator(geom[0]);
     }
-
-    // Make max_step and stop_time self-consistent, assuming constant dt.
-
-    // If max_step is the limiting condition, decrease stop_time consistently
-    if (stop_time > t_new[0] + dt[0]*(max_step - istep[0]) ) {
-        stop_time = t_new[0] + dt[0]*(max_step - istep[0]);
-    }
-    // If stop_time is the limiting condition instead, decrease max_step consistently
-    else {
-        // The static_cast should not overflow since stop_time is the limiting condition here
-        max_step = static_cast<int>(istep[0] + std::ceil( (stop_time-t_new[0])/dt[0] ));
-    }
 }
 
 /* \brief computes max_step for wakefield simulation in boosted frame.
@@ -699,25 +687,6 @@ WarpX::InitLevelData (int lev, Real /*time*/)
     pp_psatd.query("do_time_averaging", fft_do_time_averaging );
 
     for (int i = 0; i < 3; ++i) {
-        current_fp[lev][i]->setVal(0.0);
-        if (lev > 0)
-           current_cp[lev][i]->setVal(0.0);
-
-        // Initialize aux MultiFabs on level 0
-        if (lev == 0) {
-            Bfield_aux[lev][i]->setVal(0.0);
-            Efield_aux[lev][i]->setVal(0.0);
-        }
-
-        if (WarpX::do_current_centering)
-        {
-            current_fp_nodal[lev][i]->setVal(0.0);
-        }
-
-        if (WarpX::current_deposition_algo == CurrentDepositionAlgo::Vay)
-        {
-            current_fp_vay[lev][i]->setVal(0.0);
-        }
 
         if (B_ext_grid_s == "constant" || B_ext_grid_s == "default") {
            Bfield_fp[lev][i]->setVal(B_external_grid[i]);
@@ -898,30 +867,6 @@ WarpX::InitLevelData (int lev, Real /*time*/)
            }
 #endif
        }
-    }
-
-    if (F_fp[lev]) {
-        F_fp[lev]->setVal(0.0);
-    }
-
-    if (G_fp[lev]) {
-        G_fp[lev]->setVal(0.0);
-    }
-
-    if (rho_fp[lev]) {
-        rho_fp[lev]->setVal(0.0);
-    }
-
-    if (F_cp[lev]) {
-        F_cp[lev]->setVal(0.0);
-    }
-
-    if (G_cp[lev]) {
-        G_cp[lev]->setVal(0.0);
-    }
-
-    if (rho_cp[lev]) {
-        rho_cp[lev]->setVal(0.0);
     }
 
     if (costs[lev]) {

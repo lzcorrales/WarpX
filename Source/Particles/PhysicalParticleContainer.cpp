@@ -1661,9 +1661,6 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
                 pu.y *= PhysConst::c;
                 pu.z *= PhysConst::c;
 
-                const amrex::Real t_fract = amrex::Random(engine)*dt;
-                UpdatePosition(ppos.x, ppos.y, ppos.z, pu.x, pu.y, pu.z, t_fract);
-
 #if defined(WARPX_DIM_3D)
                 if (!tile_realbox.contains(XDim3{ppos.x,ppos.y,ppos.z})) {
                     p.id() = -1;
@@ -1682,13 +1679,17 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
                     continue;
                 }
 #endif
-
-                // Save the x and y values to use in the insideBounds checks.
-                // This is needed with WARPX_DIM_RZ since x and y are modified.
-                Real xb = ppos.x;
-                Real yb = ppos.y;
+                // Lab-frame simulation
+                // If the particle is not within the species's
+                // xmin, xmax, ymin, ymax, zmin, zmax, go to
+                // the next generated particle.
+                if (!inj_pos->insideBounds(ppos.x, ppos.y, ppos.z)) {
+                    p.id() = -1;
+                    continue;
+                }
 
 #ifdef WARPX_DIM_RZ
+                // Conversion from cylindrical to Cartesian coordinates
                 // Replace the x and y, setting an angle theta.
                 // These x and y are used to get the momentum and density
                 Real theta;
@@ -1702,8 +1703,9 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
                 Real const cos_theta = std::cos(theta);
                 Real const sin_theta = std::sin(theta);
                 // Rotate the position
-                ppos.x = xb*cos_theta;
-                ppos.y = xb*sin_theta;
+                amrex::Real radial_position = ppos.x;
+                ppos.x = radial_position*cos_theta;
+                ppos.y = radial_position*sin_theta;
                 if (loc_flux_normal_axis != 2) {
                     // Rotate the momentum
                     // This because, when the flux direction is e.g. "r"
@@ -1716,19 +1718,7 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
                     pu.y = sin_theta*ur + cos_theta*ut;
                 }
 #endif
-
-                // Lab-frame simulation
-                // If the particle is not within the species's
-                // xmin, xmax, ymin, ymax, zmin, zmax, go to
-                // the next generated particle.
-
-                if (!inj_pos->insideBounds(xb, yb, ppos.z)) {
-                    p.id() = -1;
-                    continue;
-                }
-
                 Real dens = inj_rho->getDensity(ppos.x, ppos.y, ppos.z);
-
                 // Remove particle if density below threshold
                 if ( dens < density_min ){
                     p.id() = -1;
@@ -1769,11 +1759,11 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
                 // the radius ; thus, the calculation is finalized here
                 if (loc_flux_normal_axis != 1) {
                     if (radially_weighted) {
-                         weight *= 2._rt*MathConst::pi*xb;
+                         weight *= 2._rt*MathConst::pi*radial_position;
                     } else {
                          // This is not correct since it might shift the particle
                          // out of the local grid
-                         ppos.x = std::sqrt(xb*rmax);
+                         ppos.x = std::sqrt(radial_position*rmax);
                          weight *= dx[0];
                     }
                 }
@@ -1783,15 +1773,21 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
                 pa[PIdx::uy][ip] = pu.y;
                 pa[PIdx::uz][ip] = pu.z;
 
+                // Update particle position by a random `t_fract`
+                // so as to produce a continuous-looking flow of particles
+                const amrex::Real t_fract = amrex::Random(engine)*dt;
+                UpdatePosition(ppos.x, ppos.y, ppos.z, pu.x, pu.y, pu.z, t_fract);
+
 #if defined(WARPX_DIM_3D)
                 p.pos(0) = ppos.x;
                 p.pos(1) = ppos.y;
                 p.pos(2) = ppos.z;
-#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
-#ifdef WARPX_DIM_RZ
-                pa[PIdx::theta][ip] = theta;
-#endif
-                p.pos(0) = xb;
+#elif defined(WARPX_DIM_RZ)
+                pa[PIdx::theta][ip] = std::atan2(ppos.y, ppos.x);
+                p.pos(0) = std::sqrt(ppos.x*ppos.x + ppos.y*ppos.y);
+                p.pos(1) = ppos.z;
+#elif defined(WARPX_DIM_XZ)
+                p.pos(0) = ppos.x;
                 p.pos(1) = ppos.z;
 #else
                 p.pos(0) = ppos.z;
@@ -2628,7 +2624,24 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
 
     const auto t_do_not_gather = do_not_gather;
 
-    amrex::ParallelFor( np_to_push, [=] AMREX_GPU_DEVICE (long ip)
+    enum exteb_flags : int { no_exteb, has_exteb };
+    enum qed_flags : int { no_qed, has_qed };
+
+    int exteb_runtime_flag = getExternalEB.isNoOp() ? no_exteb : has_exteb;
+#ifdef WARPX_QED
+    int qed_runtime_flag = (local_has_quantum_sync || do_sync) ? has_qed : no_qed;
+#else
+    int qed_runtime_flag = no_qed;
+#endif
+
+    // Using this version of ParallelFor with compile time options
+    // improves performance when qed or external EB are not used by reducing
+    // register pressure.
+    amrex::ParallelFor(TypeList<CompileTimeOptions<no_exteb,has_exteb>,
+                                CompileTimeOptions<no_qed  ,has_qed>>{},
+                       {exteb_runtime_flag, qed_runtime_flag},
+                       np_to_push, [=] AMREX_GPU_DEVICE (long ip, auto exteb_control,
+                                                         [[maybe_unused]] auto qed_control)
     {
         amrex::ParticleReal xp, yp, zp;
         getPosition(ip, xp, yp, zp);
@@ -2654,30 +2667,54 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
                            dx_arr, xyzmin_arr, lo, n_rz_azimuthal_modes,
                            nox, galerkin_interpolation);
         }
-        // Externally applied E and B-field in Cartesian co-ordinates
-        getExternalEB(ip, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
+
+        auto const& externeb_fn = getExternalEB; // Have to do this for nvcc
+        if constexpr (exteb_control == has_exteb) {
+            externeb_fn(ip, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
+        }
 
         scaleFields(xp, yp, zp, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
 
-        doParticlePush(getPosition, setPosition, copyAttribs, ip,
-                       ux[ip], uy[ip], uz[ip],
-                       Exp, Eyp, Ezp, Bxp, Byp, Bzp,
-                       ion_lev ? ion_lev[ip] : 0,
-                       m, q, pusher_algo, do_crr, do_copy,
 #ifdef WARPX_QED
-                       do_sync,
-                       t_chi_max,
+        if (!do_sync)
 #endif
-                       dt);
-
+        {
+            doParticlePush<0>(getPosition, setPosition, copyAttribs, ip,
+                              ux[ip], uy[ip], uz[ip],
+                              Exp, Eyp, Ezp, Bxp, Byp, Bzp,
+                              ion_lev ? ion_lev[ip] : 0,
+                              m, q, pusher_algo, do_crr, do_copy,
 #ifdef WARPX_QED
-        if (local_has_quantum_sync) {
-            evolve_opt(ux[ip], uy[ip], uz[ip],
-                       Exp, Eyp, Ezp,Bxp, Byp, Bzp,
-                       dt, p_optical_depth_QSR[ip]);
+                              t_chi_max,
+#endif
+                              dt);
+        }
+#ifdef WARPX_QED
+        else {
+            if constexpr (qed_control == has_qed) {
+                doParticlePush<1>(getPosition, setPosition, copyAttribs, ip,
+                                  ux[ip], uy[ip], uz[ip],
+                                  Exp, Eyp, Ezp, Bxp, Byp, Bzp,
+                                  ion_lev ? ion_lev[ip] : 0,
+                                  m, q, pusher_algo, do_crr, do_copy,
+                                  t_chi_max,
+                                  dt);
+            }
         }
 #endif
 
+#ifdef WARPX_QED
+        auto foo_local_has_quantum_sync = local_has_quantum_sync;
+        auto foo_podq = p_optical_depth_QSR;
+        auto& evolve_opt_fn = evolve_opt; // have to do all these for nvcc
+        if constexpr (qed_control == has_qed) {
+            if (foo_local_has_quantum_sync) {
+                evolve_opt_fn(ux[ip], uy[ip], uz[ip],
+                              Exp, Eyp, Ezp,Bxp, Byp, Bzp,
+                              dt, foo_podq[ip]);
+            }
+        }
+#endif
     });
 }
 
