@@ -102,10 +102,6 @@ ElectrostaticFieldDiagnostic
 
 Lab-frame diagnostics diagnostics are used when running boosted-frame simulations.
 
-LabFrameParticleDiagnostic
-""""""""""""""""""""""""""
-.. autoclass:: pywarpx.picmi.LabFrameParticleDiagnostic
-
 LabFrameFieldDiagnostic
 """""""""""""""""""""""
 .. autoclass:: pywarpx.picmi.LabFrameFieldDiagnostic
@@ -258,12 +254,6 @@ simulation objects (particles, fields and memory buffers) as well as general pro
 
 .. autofunction:: pywarpx.picmi.Simulation.extension.finalize
 
-.. autofunction:: pywarpx.picmi.Simulation.extension.getistep
-
-.. autofunction:: pywarpx.picmi.Simulation.extension.gett_new
-
-.. autofunction:: pywarpx.picmi.Simulation.extension.evolve
-
 .. autofunction:: pywarpx.picmi.Simulation.extension.getProbLo
 
 .. autofunction:: pywarpx.picmi.Simulation.extension.getProbHi
@@ -309,13 +299,15 @@ with scraped particle data.
 
 .. autofunction:: pywarpx.picmi.Simulation.extension.get_particle_boundary_buffer_size
 
-.. autofunction:: pywarpx.picmi.Simulation.extension.get_particle_boundary_buffer_size
-
 .. autofunction:: pywarpx.picmi.Simulation.extension.get_particle_boundary_buffer_structs
 
 .. autofunction:: pywarpx.picmi.Simulation.extension.get_particle_boundary_buffer
 
 .. autofunction:: pywarpx.picmi.Simulation.extension.clearParticleBoundaryBuffer
+
+The embedded boundary conditions can be modified when using the electrostatic solver.
+
+.. autofunction:: pywarpx.picmi.Simulation.extension.set_potential_EB
 
 Using Python input as a preprocessor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
