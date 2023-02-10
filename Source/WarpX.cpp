@@ -508,6 +508,12 @@ WarpX::ReadParameters ()
             pp_warpx, "numprocs", numprocs_in, 0, AMREX_SPACEDIM);
 
         if (not numprocs_in.empty()) {
+#ifdef WARPX_DIM_RZ
+            if (electromagnetic_solver_id == ElectromagneticSolverAlgo::PSATD) {
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(numprocs_in[0] == 1,
+                    "Domain decomposition in RZ with spectral solvers works only along z direction");
+            }
+#endif
             WARPX_ALWAYS_ASSERT_WITH_MESSAGE
                 (numprocs_in.size() == AMREX_SPACEDIM,
                  "warpx.numprocs, if specified, must have AMREX_SPACEDIM numbers");
@@ -573,11 +579,15 @@ WarpX::ReadParameters ()
             if ( random_seed == "random" ) {
                 std::random_device rd;
                 std::uniform_int_distribution<int> dist(2, INT_MAX);
-                unsigned long seed = myproc_1 * dist(rd);
-                ResetRandomSeed(seed);
+                unsigned long cpu_seed = myproc_1 * dist(rd);
+                unsigned long gpu_seed = myproc_1 * dist(rd);
+                ResetRandomSeed(cpu_seed, gpu_seed);
             } else if ( std::stoi(random_seed) > 0 ) {
-                unsigned long seed = myproc_1 * std::stoul(random_seed);
-                ResetRandomSeed(seed);
+                unsigned long nprocs = ParallelDescriptor::NProcs();
+                unsigned long seed_long = std::stoul(random_seed);
+                unsigned long cpu_seed = myproc_1 * seed_long;
+                unsigned long gpu_seed = (myproc_1 + nprocs) * seed_long;
+                ResetRandomSeed(cpu_seed, gpu_seed);
             } else {
                 Abort(Utils::TextMsg::Err(
                     "warpx.random_seed must be \"default\", \"random\" or an integer > 0."));
@@ -1014,14 +1024,18 @@ WarpX::ReadParameters ()
         load_balance_intervals = utils::parser::IntervalsParser(
             load_balance_intervals_string_vec);
         pp_algo.query("load_balance_with_sfc", load_balance_with_sfc);
-        pp_algo.query("load_balance_knapsack_factor", load_balance_knapsack_factor);
+        // Knapsack factor only used with non-SFC strategy
+        if (!load_balance_with_sfc)
+            pp_algo.query("load_balance_knapsack_factor", load_balance_knapsack_factor);
         utils::parser::queryWithParser(pp_algo, "load_balance_efficiency_ratio_threshold",
                         load_balance_efficiency_ratio_threshold);
         load_balance_costs_update_algo = GetAlgorithmInteger(pp_algo, "load_balance_costs_update");
-        utils::parser::queryWithParser(
-            pp_algo, "costs_heuristic_cells_wt", costs_heuristic_cells_wt);
-        utils::parser::queryWithParser(
-            pp_algo, "costs_heuristic_particles_wt", costs_heuristic_particles_wt);
+        if (WarpX::load_balance_costs_update_algo==LoadBalanceCostsUpdateAlgo::Heuristic) {
+            utils::parser::queryWithParser(
+                pp_algo, "costs_heuristic_cells_wt", costs_heuristic_cells_wt);
+            utils::parser::queryWithParser(
+                pp_algo, "costs_heuristic_particles_wt", costs_heuristic_particles_wt);
+        }
 
         // Parse algo.particle_shape and check that input is acceptable
         // (do this only if there is at least one particle or laser species)
