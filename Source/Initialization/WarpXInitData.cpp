@@ -784,7 +784,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
 //                                                    'B',
 //                                                    lev, PatchType::coarse);
 //       }
-//    }
+    }
     int IncludeBfieldPerturbation = 0;
     pp_warpx.query("IncludeBfieldPerturbation",IncludeBfieldPerturbation);
     if (IncludeBfieldPerturbation == 1) {
