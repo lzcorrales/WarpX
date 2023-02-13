@@ -761,30 +761,30 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  m_face_areas[lev],
                                                  'B',
                                                  lev, PatchType::fine);
-       if (lev > 0) {
-          InitializeExternalFieldsOnGridUsingParser(Bfield_aux[lev][0].get(),
-                                                    Bfield_aux[lev][1].get(),
-                                                    Bfield_aux[lev][2].get(),
-                                                    Bxfield_parser->compile<3>(),
-                                                    Byfield_parser->compile<3>(),
-                                                    Bzfield_parser->compile<3>(),
-                                                    m_edge_lengths[lev],
-                                                    m_face_areas[lev],
-                                                    'B',
-                                                    lev, PatchType::fine);
-
-          InitializeExternalFieldsOnGridUsingParser(Bfield_cp[lev][0].get(),
-                                                    Bfield_cp[lev][1].get(),
-                                                    Bfield_cp[lev][2].get(),
-                                                    Bxfield_parser->compile<3>(),
-                                                    Byfield_parser->compile<3>(),
-                                                    Bzfield_parser->compile<3>(),
-                                                    m_edge_lengths[lev],
-                                                    m_face_areas[lev],
-                                                    'B',
-                                                    lev, PatchType::coarse);
-       }
-    }
+//       if (lev > 0) {
+//          InitializeExternalFieldsOnGridUsingParser(Bfield_aux[lev][0].get(),
+//                                                    Bfield_aux[lev][1].get(),
+//                                                    Bfield_aux[lev][2].get(),
+//                                                    Bxfield_parser->compile<3>(),
+//                                                    Byfield_parser->compile<3>(),
+//                                                    Bzfield_parser->compile<3>(),
+//                                                    m_edge_lengths[lev],
+//                                                    m_face_areas[lev],
+//                                                    'B',
+//                                                    lev, PatchType::fine);
+//
+//          InitializeExternalFieldsOnGridUsingParser(Bfield_cp[lev][0].get(),
+//                                                    Bfield_cp[lev][1].get(),
+//                                                    Bfield_cp[lev][2].get(),
+//                                                    Bxfield_parser->compile<3>(),
+//                                                    Byfield_parser->compile<3>(),
+//                                                    Bzfield_parser->compile<3>(),
+//                                                    m_edge_lengths[lev],
+//                                                    m_face_areas[lev],
+//                                                    'B',
+//                                                    lev, PatchType::coarse);
+//       }
+//    }
     int IncludeBfieldPerturbation = 0;
     pp_warpx.query("IncludeBfieldPerturbation",IncludeBfieldPerturbation);
     if (IncludeBfieldPerturbation == 1) {
@@ -796,21 +796,21 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                Byfield_parser->compile<3>(),
                                Bzfield_parser->compile<3>(), lev, PatchType::fine);
 
-        if (lev > 0) {
-        Reconnection_Perturbation::AddBfieldPerturbation (Bfield_aux[lev][0].get(),
-                               Bfield_aux[lev][1].get(),
-                               Bfield_aux[lev][2].get(),
-                               Bxfield_parser->compile<3>(),
-                               Byfield_parser->compile<3>(),
-                               Bzfield_parser->compile<3>(), lev, PatchType::fine);
-
-        Reconnection_Perturbation::AddBfieldPerturbation (Bfield_cp[lev][0].get(),
-                               Bfield_cp[lev][1].get(),
-                               Bfield_cp[lev][2].get(),
-                               Bxfield_parser->compile<3>(),
-                               Byfield_parser->compile<3>(),
-                               Bzfield_parser->compile<3>(), lev, PatchType::coarse);
-        }
+//        if (lev > 0) {
+//        Reconnection_Perturbation::AddBfieldPerturbation (Bfield_aux[lev][0].get(),
+//                               Bfield_aux[lev][1].get(),
+//                               Bfield_aux[lev][2].get(),
+//                               Bxfield_parser->compile<3>(),
+//                               Byfield_parser->compile<3>(),
+//                               Bzfield_parser->compile<3>(), lev, PatchType::fine);
+//
+//        Reconnection_Perturbation::AddBfieldPerturbation (Bfield_cp[lev][0].get(),
+//                               Bfield_cp[lev][1].get(),
+//                               Bfield_cp[lev][2].get(),
+//                               Bxfield_parser->compile<3>(),
+//                               Byfield_parser->compile<3>(),
+//                               Bzfield_parser->compile<3>(), lev, PatchType::coarse);
+//        }
 
 #endif
     }
@@ -859,28 +859,28 @@ WarpX::InitLevelData (int lev, Real /*time*/)
         }
 #endif
 
-       if (lev > 0) {
-          InitializeExternalFieldsOnGridUsingParser(Efield_aux[lev][0].get(),
-                                                    Efield_aux[lev][1].get(),
-                                                    Efield_aux[lev][2].get(),
-                                                    Exfield_parser->compile<3>(),
-                                                    Eyfield_parser->compile<3>(),
-                                                    Ezfield_parser->compile<3>(),
-                                                    m_edge_lengths[lev],
-                                                    m_face_areas[lev],
-                                                    'E',
-                                                    lev, PatchType::fine);
-
-          InitializeExternalFieldsOnGridUsingParser(Efield_cp[lev][0].get(),
-                                                    Efield_cp[lev][1].get(),
-                                                    Efield_cp[lev][2].get(),
-                                                    Exfield_parser->compile<3>(),
-                                                    Eyfield_parser->compile<3>(),
-                                                    Ezfield_parser->compile<3>(),
-                                                    m_edge_lengths[lev],
-                                                    m_face_areas[lev],
-                                                    'E',
-                                                    lev, PatchType::coarse);
+//       if (lev > 0) {
+//          InitializeExternalFieldsOnGridUsingParser(Efield_aux[lev][0].get(),
+//                                                    Efield_aux[lev][1].get(),
+//                                                    Efield_aux[lev][2].get(),
+//                                                    Exfield_parser->compile<3>(),
+//                                                    Eyfield_parser->compile<3>(),
+//                                                    Ezfield_parser->compile<3>(),
+//                                                    m_edge_lengths[lev],
+//                                                    m_face_areas[lev],
+//                                                    'E',
+//                                                    lev, PatchType::fine);
+//
+//          InitializeExternalFieldsOnGridUsingParser(Efield_cp[lev][0].get(),
+//                                                    Efield_cp[lev][1].get(),
+//                                                    Efield_cp[lev][2].get(),
+//                                                    Exfield_parser->compile<3>(),
+//                                                    Eyfield_parser->compile<3>(),
+//                                                    Ezfield_parser->compile<3>(),
+//                                                    m_edge_lengths[lev],
+//                                                    m_face_areas[lev],
+//                                                    'E',
+//                                                    lev, PatchType::coarse);
 #ifdef AMREX_USE_EB
            if (WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::ECT) {
                // We initialize ECTRhofield consistently with the Efield
@@ -889,7 +889,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
 
            }
 #endif
-       }
+//       }
     }
 
     if (costs[lev]) {
