@@ -763,9 +763,11 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  'B',
                                                  lev, PatchType::fine);
         } else {
+              for (int i = 0; i < 3; ++i) {
               Bfield_aux[lev][i]->setVal(0.);
               Bfield_cp[lev][i]->setVal(0.);
               Bfield_fp[lev][i]->setVal(0.);
+              }
         }
 //       if (lev > 0) {
 //          InitializeExternalFieldsOnGridUsingParser(Bfield_aux[lev][0].get(),
