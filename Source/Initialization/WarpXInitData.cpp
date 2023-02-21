@@ -750,7 +750,8 @@ WarpX::InitLevelData (int lev, Real /*time*/)
        Bzfield_parser = std::make_unique<amrex::Parser>(
           utils::parser::makeParser(str_Bz_ext_grid_function,{"x","y","z"}));
 
-       // Initialize Bfield_fp with external function
+       // Initialize Bfield_fp with external function only on level 0 -- HACK
+       if (lev == 0) {
        InitializeExternalFieldsOnGridUsingParser(Bfield_fp[lev][0].get(),
                                                  Bfield_fp[lev][1].get(),
                                                  Bfield_fp[lev][2].get(),
@@ -761,6 +762,11 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  m_face_areas[lev],
                                                  'B',
                                                  lev, PatchType::fine);
+        } else {
+              Bfield_aux[lev][i]->setVal(0.);
+              Bfield_cp[lev][i]->setVal(0.);
+              Bfield_fp[lev][i]->setVal(0.);
+        }
 //       if (lev > 0) {
 //          InitializeExternalFieldsOnGridUsingParser(Bfield_aux[lev][0].get(),
 //                                                    Bfield_aux[lev][1].get(),
@@ -789,13 +795,14 @@ WarpX::InitLevelData (int lev, Real /*time*/)
     pp_warpx.query("IncludeBfieldPerturbation",IncludeBfieldPerturbation);
     if (IncludeBfieldPerturbation == 1) {
 #ifndef WARPX_DIM_RZ
+        if (lev == 0) { // HACK to debug MR
         Reconnection_Perturbation::AddBfieldPerturbation (Bfield_fp[lev][0].get(),
                                Bfield_fp[lev][1].get(),
                                Bfield_fp[lev][2].get(),
                                Bxfield_parser->compile<3>(),
                                Byfield_parser->compile<3>(),
                                Bzfield_parser->compile<3>(), lev, PatchType::fine);
-
+        }
 //        if (lev > 0) {
 //        Reconnection_Perturbation::AddBfieldPerturbation (Bfield_aux[lev][0].get(),
 //                               Bfield_aux[lev][1].get(),
