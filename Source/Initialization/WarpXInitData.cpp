@@ -846,8 +846,9 @@ WarpX::InitLevelData (int lev, Real /*time*/)
            utils::parser::makeParser(str_Ey_ext_grid_function,{"x","y","z"}));
        Ezfield_parser = std::make_unique<amrex::Parser>(
            utils::parser::makeParser(str_Ez_ext_grid_function,{"x","y","z"}));
-
-       // Initialize Efield_fp with external function
+      
+       // Initialize Bfield_fp with external function only on level 0 -- HACK
+       if (lev == 0) {
        InitializeExternalFieldsOnGridUsingParser(Efield_fp[lev][0].get(),
                                                  Efield_fp[lev][1].get(),
                                                  Efield_fp[lev][2].get(),
@@ -858,6 +859,24 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                                                  m_face_areas[lev],
                                                  'E',
                                                  lev, PatchType::fine);
+        } else {
+              for (int i = 0; i < 3; ++i) {
+              Efield_aux[lev][i]->setVal(0.);
+              Efield_cp[lev][i]->setVal(0.);
+              Efield_fp[lev][i]->setVal(0.);
+              }
+        }
+//       // Initialize Efield_fp with external function
+//       InitializeExternalFieldsOnGridUsingParser(Efield_fp[lev][0].get(),
+//                                                 Efield_fp[lev][1].get(),
+//                                                 Efield_fp[lev][2].get(),
+//                                                 Exfield_parser->compile<3>(),
+//                                                 Eyfield_parser->compile<3>(),
+//                                                 Ezfield_parser->compile<3>(),
+//                                                 m_edge_lengths[lev],
+//                                                 m_face_areas[lev],
+//                                                 'E',
+//                                                 lev, PatchType::fine);
 
 #ifdef AMREX_USE_EB
         // We initialize ECTRhofield consistently with the Efield
